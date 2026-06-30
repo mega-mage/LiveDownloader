@@ -1,0 +1,9 @@
+/target
+/reference
+/downloads
+/config
+/src-tauri/target
+/dist
+node_modules
+TODO.md
+*.zip

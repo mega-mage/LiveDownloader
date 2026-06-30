@@ -1,0 +1,267 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Nunito:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+/* === Theme Styles Definitions === */
+
+:root {
+  /* Default: Dark Geek (暗黑极客) */
+  --background: #08090d;
+  --foreground: #f8fafc;
+  --card: rgba(20, 22, 37, 0.7);
+  --card-foreground: #f8fafc;
+  --popover: #0f111a;
+  --popover-foreground: #f8fafc;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --accent: #8b5cf6;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #3b82f6;
+  --radius: 0.5rem;
+  
+  --bg-gradient: linear-gradient(135deg, #050608 0%, #111322 100%);
+  --accent-gradient: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+  --accent-glow: rgba(139, 92, 246, 0.25);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Cyberpunk Theme (赛博朋克) */
+.theme-cyberpunk {
+  --background: #0a0314;
+  --foreground: #00ffcc;
+  --card: rgba(18, 6, 36, 0.85);
+  --card-foreground: #00ffcc;
+  --popover: #150827;
+  --popover-foreground: #ff0055;
+  --primary: #ff0055;
+  --primary-foreground: #ffffff;
+  --secondary: #27063d;
+  --secondary-foreground: #00ffcc;
+  --muted: #27063d;
+  --muted-foreground: #a78bfa;
+  --accent: #ffea00;
+  --accent-foreground: #000000;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 0, 85, 0.35);
+  --input: rgba(255, 0, 85, 0.2);
+  --ring: #ff0055;
+  --radius: 0px; /* Sharp corners for retro cyberpunk look */
+  
+  --bg-gradient: linear-gradient(135deg, #05010a 0%, #1e0535 100%);
+  --accent-gradient: linear-gradient(90deg, #ff0055 0%, #ffea00 100%);
+  --accent-glow: rgba(255, 0, 85, 0.4);
+}
+
+/* Sakura Theme (粉嫩樱花) */
+.theme-sakura {
+  --background: #fff5f7;
+  --foreground: #d01c51;
+  --card: rgba(255, 255, 255, 0.95);
+  --card-foreground: #d01c51;
+  --popover: #ffffff;
+  --popover-foreground: #d01c51;
+  --primary: #ff8da1;
+  --primary-foreground: #ffffff;
+  --secondary: #ffe3e8;
+  --secondary-foreground: #d01c51;
+  --muted: #ffe3e8;
+  --muted-foreground: #ff708a;
+  --accent: #ffb3c1;
+  --accent-foreground: #d01c51;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 141, 161, 0.4);
+  --input: rgba(255, 141, 161, 0.2);
+  --ring: #ff8da1;
+  --radius: 0.75rem;
+  
+  --bg-gradient: linear-gradient(135deg, #fff0f3 0%, #ffe3e8 100%);
+  --accent-gradient: linear-gradient(90deg, #ff8da1 0%, #ffb3c1 100%);
+  --accent-glow: rgba(255, 141, 161, 0.25);
+}
+
+/* Slate Light Theme (极简石蓝) */
+.theme-light {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #0f172a;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #475569;
+  --accent: #3b82f6;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #cbd5e1;
+  --ring: #0f172a;
+  --radius: 0.5rem;
+  
+  --bg-gradient: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  --accent-gradient: linear-gradient(90deg, #0f172a 0%, #3b82f6 100%);
+  --accent-glow: rgba(59, 130, 246, 0.15);
+}
+
+/* Forest Theme (森林之息) */
+.theme-forest {
+  --background: #07120e;
+  --foreground: #d1fae5;
+  --card: rgba(12, 28, 21, 0.8);
+  --card-foreground: #d1fae5;
+  --popover: #091712;
+  --popover-foreground: #10b981;
+  --primary: #10b981;
+  --primary-foreground: #050d0a;
+  --secondary: #0d2a1f;
+  --secondary-foreground: #d1fae5;
+  --muted: #0d2a1f;
+  --muted-foreground: #34d399;
+  --accent: #84cc16;
+  --accent-foreground: #050d0a;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(16, 185, 129, 0.25);
+  --input: rgba(16, 185, 129, 0.15);
+  --ring: #10b981;
+  --radius: 0.375rem;
+  
+  --bg-gradient: linear-gradient(135deg, #030806 0%, #0d241b 100%);
+  --accent-gradient: linear-gradient(90deg, #10b981 0%, #84cc16 100%);
+  --accent-glow: rgba(16, 185, 129, 0.3);
+}
+
+/* === Global resets and classes === */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-gradient);
+  color: var(--foreground);
+  min-height: 100vh;
+  overflow: hidden;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* Custom Webkit scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Custom CSS Glass panel style */
+.glass-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: all 0.3s ease;
+}
+
+.glass-panel:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Cyberpunk glow override */
+.theme-cyberpunk .glass-panel {
+  box-shadow: 0 0 15px rgba(255, 0, 85, 0.15);
+}
+
+.theme-cyberpunk .glass-panel:hover {
+  border-color: #00ffcc;
+  box-shadow: 0 0 25px rgba(0, 255, 204, 0.25);
+}
+
+/* Outlined glow button dynamic effect */
+.glow-on-hover {
+  position: relative;
+  overflow: hidden;
+}
+
+.glow-on-hover::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.glow-on-hover:hover::after {
+  opacity: 1;
+}
+
+/* Custom scale animations */
+@keyframes slide-in {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
