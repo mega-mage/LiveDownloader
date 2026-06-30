@@ -1,27 +1,8 @@
-# LiveDownloader (Auto-record Scheduler System)
+# LiveDownloader
 
-<<<<<<< HEAD
 LiveDownloader is a modern, visually stunning automated live stream recording   system designed for major streaming platforms. This repository contains the front-end UI project, which can run seamlessly as a standalone **web application** (communicating with remote servers or NAS backend APIs) or a native **desktop client** (powered by Tauri and Rust).
 
 ---
-
-=======
-LiveDownloader is a modern, visually stunning automated live stream recording and scheduler management system designed for major streaming platforms. This repository contains the front-end UI project, which can run seamlessly as a standalone **web application** (communicating with remote servers or NAS backend APIs) or a native **desktop client** (powered by Tauri and Rust).
-
----
-
-## 🎨 Design Aesthetics & Features
-
-- **Glassmorphism & Micro-animations**: Fully utilizes translucent frosted glass panels, smooth color gradients, glowing borders, and modern interactive transition animations.
-- **Bilingual Internationalization (i18n)**: Out-of-the-box support for both Chinese (zh) and English (en). Easily toggle the language directly from the navbar, with preference persisted automatically in localStorage.
-- **Responsive Adaptive Layout**: Perfectly optimized for high-res desktops, tablets, and vertical mobile viewports. On mobile screens, the app transitions smoothly to a sliding navigation drawer, flexible grid flows, and stackable overlays.
-- **Dynamic Theme Shuffle**:
-  - Comes with 5 exquisite preset theme skins: Sleek Dark, Cyberpunk, Sakura, Slate Light, and Forest.
-  - Features a multi-dimensional randomizer (Theme Shuffle): generates fresh styles by mixing **base dark/light modes, harmonious primary and accent hue ranges, border-radius metrics, google fonts, and card background opacities**.
-  - Includes a **6th Custom Theme Save Slot**: one-click saves your shuffled configurations and restores them anytime.
-
----
->>>>>>> 0c4c0bff1994e9fe6b2e2841618fc0ee6204f038
 
 ## 🚀 Core Modules
 
