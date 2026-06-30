@@ -55,7 +55,6 @@ export function Sidebar({ activeTab, onChangeTab, currentTheme, onChangeTheme, o
         </div>
         <div className="flex flex-col">
           <h1 className="font-bold text-base leading-none tracking-tight">LiveDownloader</h1>
-          <span className="text-xxs text-muted-foreground mt-1">{t("brand_sub", lang)}</span>
         </div>
       </div>
 
