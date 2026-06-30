@@ -37,6 +37,9 @@ LiveDownloader is a modern, visually stunning automated live stream recording   
 
 ## 📦 Quick Start & Development
 
+### 0. ffmpeg
+Make sure you have [ffmpeg](https://www.ffmpeg.org/download.html) installed
+
 ### 1. Install Dependencies
 Make sure you have [Node.js](https://nodejs.org/) installed, then run in project root directory:
 ```bash
