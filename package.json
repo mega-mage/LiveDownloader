@@ -1,8 +1,20 @@
 {
   "name": "livedownloader-ui",
+  "version": "0.1.1",
   "private": true,
-  "version": "0.1.0",
+  "description": "",
+  "homepage": "https://github.com/mega-mage/LiveDownloader#readme",
+  "bugs": {
+    "url": "https://github.com/mega-mage/LiveDownloader/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mega-mage/LiveDownloader.git"
+  },
+  "license": "ISC",
+  "author": "",
   "type": "module",
+  "main": "check_lucide.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
