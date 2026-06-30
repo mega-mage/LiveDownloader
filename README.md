@@ -72,6 +72,48 @@ npm run tauri dev
 npm run tauri build
 ```
 
+## 📱 安卓本地部署指南 (APK 前端 + Termux 后端)
+
+如果你想在安卓手机上实现完全独立的本地直播录制，可以采用 **“前端打包成 APK 安装包 + 后端利用 Termux 在本地后台运行”** 的闭环方案。
+
+### 1. 前端打包为安卓 App
+1. 在项目根目录下，利用 **Capacitor** 初始化安卓环境：
+   ```bash
+   npm install @capacitor/core @capacitor/cli
+   npx cap init LiveDownloader com.livedownloader.app --web-dir=dist
+   npm install @capacitor/android
+   npx cap add android
+   ```
+2. 每次前端资源构建完成后，同步代码并使用 Android Studio 生成 APK 安装包：
+   ```bash
+   npm run build
+   npx cap sync
+   npx cap open android
+   # 在 Android Studio 中编译生成并安装 Release APK
+   ```
+3. 在安装好的 App 设置中，将远程 API 地址设定为本地回环地址 `http://127.0.0.1:10730`。
+
+### 2. 手机本地 Termux 部署后端
+1. 在手机上安装最新版 [Termux (F-Droid 发行版)](https://f-droid.org/zh_CN/packages/com.termux/)。
+2. 打开 Termux 终端，更新源并安装依赖库：
+   ```bash
+   pkg update && pkg upgrade -y
+   pkg install ffmpeg rust git -y
+   ```
+3. 拉取后端代码并直接在手机本地进行编译运行：
+   ```bash
+   git clone <后端项目 Git 仓库地址>
+   cd <后端目录>
+   cargo build --release
+   ./target/release/livedownloader-backend --host 127.0.0.1 --port 10730
+   ```
+
+### 💡 关键避坑与调优
+- **外部存储映射**：为了让录制出的视频保存在手机的常规相册/电影文件夹中，必须在 Termux 内运行 `termux-setup-storage` 获取存储权限，并将后端配置中的视频默认保存路径设为 `/storage/emulated/0/Movies/LiveDownloader`。
+- **防止后台冻结**：
+  1. 下拉 Termux 状态栏通知，点击 **Acquire wakelock** 锁定 CPU 不休眠。
+  2. 在手机系统设置中，将 Termux 的省电策略设为 **“无限制 / 允许后台高耗电”**。
+
 ---
 
 ## 📁 目录结构

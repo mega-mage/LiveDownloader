@@ -70,6 +70,48 @@ npm run tauri dev
 npm run tauri build
 ```
 
+## 📱 Android Local Deployment Guide (APK Frontend + Termux Backend)
+
+If you want to achieve completely independent local stream recording on your Android device, you can use the **"Frontend packaged as standalone APK + Backend running locally inside Termux"** solution.
+
+### 1. Build and Package Frontend as APK
+1. Under the project root, initialize Capacitor to set up Android builds:
+   ```bash
+   npm install @capacitor/core @capacitor/cli
+   npx cap init LiveDownloader com.livedownloader.app --web-dir=dist
+   npm install @capacitor/android
+   npx cap add android
+   ```
+2. Whenever frontend codes update, sync files and build APK with Android Studio:
+   ```bash
+   npm run build
+   npx cap sync
+   npx cap open android
+   # Build, package and install Release APK from Android Studio
+   ```
+3. In the settings page of the installed Android App, configure the Remote API Address to point to local loopback: `http://127.0.0.1:10730`.
+
+### 2. Setup Local Backend inside Termux
+1. Install the latest version of [Termux (F-Droid Build)](https://f-droid.org/zh_CN/packages/com.termux/).
+2. Start Termux shell, update repositories and install dependencies:
+   ```bash
+   pkg update && pkg upgrade -y
+   pkg install ffmpeg rust git -y
+   ```
+3. Clone and compile the Rust backend executable directly on your phone:
+   ```bash
+   git clone <Backend-Git-Repository-URL>
+   cd <backend-folder>
+   cargo build --release
+   ./target/release/livedownloader-backend --host 127.0.0.1 --port 10730
+   ```
+
+### 💡 Key Tuning & Optimizations
+- **Shared Storage Mapping**: To ensure recorded videos can be accessed by default Android Movies galleries, run `termux-setup-storage` inside Termux to request storage permissions, then set your default video directory path in configurations to `/storage/emulated/0/Movies/LiveDownloader`.
+- **Prevent App Background Killing**:
+  1. Pull down the notifications menu and click **Acquire wakelock** inside the Termux notification banner to keep the CPU awake.
+  2. Under system Settings > App Manager > Termux > Battery Management, check **"Unrestricted / Run in Background"**.
+
 ---
 
 ## 📁 Directory Structures
