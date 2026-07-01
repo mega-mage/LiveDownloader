@@ -103,7 +103,7 @@ If you want to achieve completely independent local stream recording on your And
    git clone <Backend-Git-Repository-URL>
    cd <backend-folder>
    cargo build --release
-   ./target/release/livedownloader-backend --host 127.0.0.1 --port 10730
+   ./target/release/livedownloader --server --port 10730
    ```
 
 ### 💡 Key Tuning & Optimizations

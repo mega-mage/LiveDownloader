@@ -85,4 +85,4 @@ cargo build --release --no-default-features --features server
    ```bash
    cargo build --release --no-default-features --features server
    ```
-3. 运行 `./target/release/LiveDownloader --host 127.0.0.1 --port 10730`，配合编译打包出的安卓前端 APK 实现完全无损的手机本地直播录制。
+3. 运行 `./target/release/LiveDownloader --server --port 10730`，配合编译打包出的安卓前端 APK 实现完全无损的手机本地直播录制。

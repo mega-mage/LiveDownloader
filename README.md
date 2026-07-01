@@ -105,7 +105,7 @@ npm run tauri build
    git clone <后端项目 Git 仓库地址>
    cd <后端目录>
    cargo build --release
-   ./target/release/livedownloader-backend --host 127.0.0.1 --port 10730
+   ./target/release/livedownloader --server --port 10730
    ```
 
 ### 💡 关键避坑与调优
