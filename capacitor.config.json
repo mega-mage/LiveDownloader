@@ -1,0 +1,5 @@
+{
+  "appId": "com.livedownloader.app",
+  "appName": "LiveDownloader",
+  "webDir": "dist"
+}
