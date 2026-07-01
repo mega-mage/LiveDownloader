@@ -84,10 +84,10 @@ fn init_core(config_toml_path: &Path) -> Result<(
     let manager = TaskManager::new(config_toml_path, is_paused.clone())?;
     let room_statuses = manager.room_statuses.clone();
 
-    let proxy_listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let proxy_listener = std::net::TcpListener::bind("0.0.0.0:0")?;
     let proxy_port = proxy_listener.local_addr()?.port();
     proxy_listener.set_nonblocking(true)?;
-    info!("Stream proxy will listen on 127.0.0.1:{}", proxy_port);
+    info!("Stream proxy will listen on all interfaces (0.0.0.0) on port {}", proxy_port);
 
     let change_notify = Arc::new(tokio::sync::Notify::new());
 

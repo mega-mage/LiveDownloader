@@ -7,12 +7,12 @@ use axum::{
     Router,
     routing::{get, post, delete},
     extract::State as AxumState,
-    http::{StatusCode, HeaderMap, Method},
+    http::{StatusCode, HeaderMap},
     Json,
     response::IntoResponse,
     middleware::{self, Next},
 };
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::CorsLayer;
 use std::sync::Arc;
 use tracing::info;
 
@@ -562,10 +562,7 @@ fn bind_listener(port: u16) -> Result<std::net::TcpListener, Box<dyn std::error:
 }
 
 pub async fn start_server(state: Arc<AppState>, port: u16) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
-        .allow_headers(Any);
+    let cors = CorsLayer::permissive();
 
     let app = Router::new()
         .route("/api/video/download", get(api_download_video))
