@@ -483,6 +483,10 @@ async fn api_download_video(
         axum::http::header::CONTENT_TYPE,
         axum::http::HeaderValue::from_static("application/octet-stream"),
     );
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        axum::http::HeaderValue::from_static("*"),
+    );
 
     let content_disposition = format!(
         "attachment; filename=\"{}\"; filename*=UTF-8''{}",
