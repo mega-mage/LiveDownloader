@@ -101,6 +101,14 @@ export function SettingsSection({
                     onChange={(e) => setRemoteApiBase(e.target.value)}
                     onBlur={() => setApiBaseUrl(remoteApiBase)}
                   />
+                  {window.location.protocol === "https:" && remoteApiBase.toLowerCase().startsWith("http:") && !remoteApiBase.toLowerCase().startsWith("https:") && (
+                    <p className="text-xxs text-rose-500 mt-1 leading-normal font-semibold">
+                      {lang === "zh" 
+                        ? "⚠️ 混合内容限制：网页当前处于安全加密的 HTTPS，但填写的 API 为非加密 HTTP。浏览器将会拦截此网络请求。请使用 HTTPS 地址，或通过不带 S 的 HTTP 网页访问。" 
+                        : "⚠️ Mixed Content: Page is loaded over secure HTTPS, but requested API is HTTP. Browser will block this request. Please use HTTPS or load the page over HTTP."
+                      }
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-foreground/80">{t("api_token", lang)}</label>
