@@ -17,7 +17,7 @@ env:
 
 jobs:
   # ============================================================================
-  # 1. Server Binary Build Job (Linux Multi-Arch: amd64, arm64, armv7) [RUNS FIRST]
+  # 1. Server Binary Build Job (runs first, artifacts only)
   # ============================================================================
   build-server:
     name: Server Binary (${{ matrix.arch_name }})
@@ -79,16 +79,8 @@ jobs:
           name: livedownloader-server-linux-${{ matrix.arch_name }}
           path: build_output/livedownloader-server-linux-${{ matrix.arch_name }}
 
-      - name: Upload Server Binary to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: build_output/livedownloader-server-linux-${{ matrix.arch_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   # ============================================================================
-  # 2. Desktop GUI Build Job (Tauri: Windows, macOS, Linux x86_64 / ARM64) [RUNS AFTER SERVER]
+  # 2. Desktop GUI Build Job (Tauri: creates the GitHub Release)
   # ============================================================================
   build-desktop:
     name: Desktop GUI (${{ matrix.platform }})
@@ -110,11 +102,6 @@ jobs:
             platform: linux-amd64
             args: ""
 
-          - os: ubuntu-latest
-            platform: linux-arm64
-            args: "--target aarch64-unknown-linux-gnu"
-            target: aarch64-unknown-linux-gnu
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -122,59 +109,20 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target || (matrix.platform == 'macos-universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '') }}
+          targets: ${{ matrix.platform == 'macos-universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install Linux Desktop Dependencies
         if: runner.os == 'Linux'
         run: |
-          if [ "${{ matrix.platform }}" = "linux-arm64" ]; then
-            echo "🔧 Configuring arm64 cross-compilation environment..."
-
-            sudo dpkg --add-architecture arm64
-
-            if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-              sudo sed -i 's/Types: deb/Types: deb\nArchitectures: amd64/' /etc/apt/sources.list.d/ubuntu.sources
-            fi
-            if [ -f /etc/apt/sources.list ]; then
-              sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
-            fi
-
-            sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null <<EOF
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-backports main restricted universe multiverse
-          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse
-          EOF
-
-            for i in {1..3}; do
-              sudo apt-get update -o Acquire::ForceIPv4=true --fix-missing && break
-              echo "Retry $i/3..."
-              sleep 10
-            done
-
-            sudo apt-get install -y --no-install-recommends \
-              gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-              libwebkit2gtk-4.1-dev:arm64 \
-              librsvg2-dev:arm64 \
-              libxdo-dev:arm64 \
-              libssl-dev:arm64 \
-              libgtk-3-dev:arm64 \
-              libayatana-appindicator3-dev:arm64
-
-            sudo ln -sf /usr/lib/aarch64-linux-gnu/pkgconfig/ayatana-appindicator3-0.1.pc /usr/lib/aarch64-linux-gnu/pkgconfig/appindicator3-0.1.pc
-            sudo ln -sf /usr/lib/aarch64-linux-gnu/pkgconfig/ayatana-appindicator3-0.1.pc /usr/lib/aarch64-linux-gnu/pkgconfig/appindicator-0.1.pc
-          else
-            sudo apt-get update
-            sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev libgtk-3-dev
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/ayatana-appindicator3-0.1.pc /usr/lib/x86_64-linux-gnu/pkgconfig/appindicator3-0.1.pc || true
-            sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/ayatana-appindicator3-0.1.pc /usr/lib/x86_64-linux-gnu/pkgconfig/appindicator-0.1.pc || true
-          fi
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev libgtk-3-dev
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/ayatana-appindicator3-0.1.pc /usr/lib/x86_64-linux-gnu/pkgconfig/appindicator3-0.1.pc || true
 
       - name: Install Frontend Dependencies
         run: npm ci || npm install
@@ -183,14 +131,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PKG_CONFIG_ALLOW_CROSS: "1"
-          PKG_CONFIG_SYSROOT_DIR: "/"
-          PKG_CONFIG_LIBDIR: "${{ matrix.platform == 'linux-arm64' && '/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig' || '' }}"
-          PKG_CONFIG_PATH: "${{ matrix.platform == 'linux-arm64' && '/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig' || '' }}"
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
-          CC_aarch64_unknown_linux_gnu: "aarch64-linux-gnu-gcc"
-          CXX_aarch64_unknown_linux_gnu: "aarch64-linux-gnu-g++"
-          AR_aarch64_unknown_linux_gnu: "aarch64-linux-gnu-ar"
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'LiveDownloader v__VERSION__'
@@ -198,3 +138,29 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  # ============================================================================
+  # 3. Upload Server Binaries to the GitHub Release (after both jobs complete)
+  # ============================================================================
+  upload-server-release:
+    name: Attach Server Binaries to Release
+    needs: [build-server, build-desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all server artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: server-binaries
+          pattern: livedownloader-server-linux-*
+          merge-multiple: true
+
+      - name: List downloaded files
+        run: ls -la server-binaries/
+
+      - name: Upload Server Binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: server-binaries/livedownloader-server-linux-*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
