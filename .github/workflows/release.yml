@@ -61,10 +61,14 @@ jobs:
       - name: Install Linux Desktop Dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
           if [ "${{ matrix.platform }}" = "linux-arm64" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+            sudo dpkg --add-architecture arm64
+            sudo apt-get update
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+              libwebkit2gtk-4.1-dev:arm64 libappindicator3-dev:arm64 librsvg2-dev:arm64 libxdo-dev:arm64 libssl-dev:arm64
+          else
+            sudo apt-get update
+            sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
           fi
 
       - name: Install Frontend Dependencies
@@ -74,6 +78,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PKG_CONFIG_ALLOW_CROSS: "1"
+          PKG_CONFIG_PATH_aarch64_unknown_linux_gnu: "/usr/lib/aarch64-linux-gnu/pkgconfig"
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'LiveDownloader v__VERSION__'
