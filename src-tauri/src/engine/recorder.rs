@@ -66,27 +66,16 @@ impl Recorder {
         custom_format: Option<&str>,
     ) -> (PathBuf, PathBuf) {
         let now = Local::now();
-        let date_folder = now.format("%Y-%m-%d").to_string();
         let time_str = now.format("%Y-%m-%d_%H-%M-%S").to_string();
         
         // Clean up title/anchor names of forbidden characters
         let clean_anchor = sanitize_filename(anchor_name);
         let clean_title = sanitize_filename(title);
         
-        let mut dir_path = config.settings.save_path.clone();
+        let dir_path = config.settings.save_path.clone();
         
-        if config.settings.folder_by_author {
-            dir_path.push(&clean_anchor);
-        }
-        if config.settings.folder_by_time {
-            dir_path.push(&date_folder);
-        }
-        if config.settings.folder_by_title {
-            dir_path.push(&clean_title);
-        }
-        
-        // Base filename
-        let filename_base = if config.settings.filename_by_title {
+        // Base filename containing anchor, title (if enabled/available), and timestamp
+        let filename_base = if config.settings.filename_by_title || (!clean_title.is_empty() && clean_title != "抖音直播间" && clean_title != "直播间") {
             format!("{}_{}_{}", clean_anchor, clean_title, time_str)
         } else {
             format!("{}_{}", clean_anchor, time_str)
@@ -122,14 +111,23 @@ impl Recorder {
         config: &AppConfig,
         custom_format: Option<&str>,
     ) -> Result<RecordSession, Box<dyn std::error::Error + Send + Sync>> {
-        // Read segment config
-        // Default to split if configured. Let's assume we can fetch split settings from extra configs or check python logic
-        // We will read "分段录制是否开启" and "视频分段时间(秒)" from config section
-        // Note: For now, we can check if config has custom fields, or assume config.ini defaults.
-        // Let's add simple parsing for these in recorder.
-        let split_by_time = true;
-        
-        let (dir_path, file_path) = Self::build_paths(config, anchor_name, title, split_by_time, custom_format);
+        // Read split config from AppConfig
+        let split_mode = config.settings.split_mode.to_lowercase();
+        let enable_split = split_mode != "none" && split_mode != "false" && split_mode != "off";
+
+        let segment_time_str = match split_mode.as_str() {
+            "size" => {
+                let size_mb = config.settings.split_size_mb.max(10);
+                let bitrate_kbps = (config.settings.split_video_bitrate_kbps as u64).max(100);
+                let calc_secs = (size_mb * 8192) / bitrate_kbps;
+                calc_secs.max(10).to_string()
+            }
+            _ => { // "time" or default
+                config.settings.split_time_secs.max(10).to_string()
+            }
+        };
+
+        let (dir_path, file_path) = Self::build_paths(config, anchor_name, title, enable_split, custom_format);
 
         // Create downloading directory
         let downloading_dir = config.settings.save_path.join("downloading");
@@ -230,11 +228,11 @@ impl Recorder {
                 args.push("-ab".to_string());
                 args.push("320k".to_string());
                 
-                if split_by_time {
+                if enable_split {
                     args.push("-f".to_string());
                     args.push("segment".to_string());
                     args.push("-segment_time".to_string());
-                    args.push("1200".to_string());
+                    args.push(segment_time_str.clone());
                     args.push("-reset_timestamps".to_string());
                     args.push("1".to_string());
                     args.push("-segment_format".to_string());
@@ -254,11 +252,11 @@ impl Recorder {
                 args.push("-ab".to_string());
                 args.push("320k".to_string());
                 
-                if split_by_time {
+                if enable_split {
                     args.push("-f".to_string());
                     args.push("segment".to_string());
                     args.push("-segment_time".to_string());
-                    args.push("1200".to_string());
+                    args.push(segment_time_str.clone());
                     args.push("-reset_timestamps".to_string());
                     args.push("1".to_string());
                     args.push("-segment_format".to_string());
@@ -278,11 +276,11 @@ impl Recorder {
                 args.push("-bsf:a".to_string());
                 args.push("aac_adtstoasc".to_string());
                 
-                if split_by_time {
+                if enable_split {
                     args.push("-f".to_string());
                     args.push("segment".to_string());
                     args.push("-segment_time".to_string());
-                    args.push("1200".to_string());
+                    args.push(segment_time_str.clone());
                     args.push("-reset_timestamps".to_string());
                     args.push("1".to_string());
                     args.push("-segment_format".to_string());
@@ -304,11 +302,11 @@ impl Recorder {
                 args.push("-bsf:a".to_string());
                 args.push("aac_adtstoasc".to_string());
                 
-                if split_by_time {
+                if enable_split {
                     args.push("-f".to_string());
                     args.push("segment".to_string());
                     args.push("-segment_time".to_string());
-                    args.push("1200".to_string());
+                    args.push(segment_time_str.clone());
                     args.push("-reset_timestamps".to_string());
                     args.push("1".to_string());
                     args.push("-segment_format".to_string());
@@ -328,11 +326,11 @@ impl Recorder {
                 args.push("-bsf:a".to_string());
                 args.push("aac_adtstoasc".to_string());
                 
-                if split_by_time {
+                if enable_split {
                     args.push("-f".to_string());
                     args.push("segment".to_string());
                     args.push("-segment_time".to_string());
-                    args.push("1200".to_string());
+                    args.push(segment_time_str.clone());
                     args.push("-reset_timestamps".to_string());
                     args.push("1".to_string());
                     args.push("-segment_format".to_string());
@@ -352,11 +350,11 @@ impl Recorder {
                 args.push("-bsf:a".to_string());
                 args.push("aac_adtstoasc".to_string());
                 
-                if split_by_time {
+                if enable_split {
                     args.push("-f".to_string());
                     args.push("segment".to_string());
                     args.push("-segment_time".to_string());
-                    args.push("1200".to_string());
+                    args.push(segment_time_str.clone());
                     args.push("-reset_timestamps".to_string());
                     args.push("1".to_string());
                     args.push("-segment_format".to_string());

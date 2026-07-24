@@ -38,19 +38,6 @@ import {
 import "./App.css";
 
 function App() {
-  // Titlebar drag logic for custom frameless windows
-  const dragRef = useRef({
-    isDragging: false,
-    startX: 0,
-    startY: 0,
-    startWinX: 0,
-    startWinY: 0,
-    scaleFactor: 1,
-    rafId: null,
-    currentX: 0,
-    currentY: 0,
-  });
-
   const handleMinimize = () => {
     if (getCurrentWebviewWindow) getCurrentWebviewWindow().minimize();
   };
@@ -69,74 +56,18 @@ function App() {
     if (getCurrentWebviewWindow) getCurrentWebviewWindow().close();
   };
 
+  // Native Tauri Window Drag Handler (Prevents sticky cursor bugs)
   const handleDragStart = async (e) => {
     if (e.button !== 0 || !getCurrentWebviewWindow) return;
-    e.preventDefault();
-
-    const win = getCurrentWebviewWindow();
-    const pos = await win.outerPosition();
-    const sf = await win.scaleFactor();
-
-    dragRef.current = {
-      isDragging: true,
-      startX: e.screenX,
-      startY: e.screenY,
-      startWinX: pos.x,
-      startWinY: pos.y,
-      scaleFactor: sf,
-      currentX: pos.x,
-      currentY: pos.y,
-      rafId: null,
-    };
-
-    document.addEventListener("mousemove", handleDragMove);
-    document.addEventListener("mouseup", handleDragEnd);
-  };
-
-  const handleDragMove = (e) => {
-    if (!dragRef.current.isDragging) return;
-
-    const deltaX = e.screenX - dragRef.current.startX;
-    const deltaY = e.screenY - dragRef.current.startY;
-
-    dragRef.current.currentX = dragRef.current.startWinX + Math.round(deltaX * dragRef.current.scaleFactor);
-    dragRef.current.currentY = dragRef.current.startWinY + Math.round(deltaY * dragRef.current.scaleFactor);
-
-    if (!dragRef.current.rafId) {
-      dragRef.current.rafId = requestAnimationFrame(async () => {
-        if (!dragRef.current.isDragging) {
-          dragRef.current.rafId = null;
-          return;
-        }
-        try {
-          if (getCurrentWebviewWindow && PhysicalPosition) {
-            const win = getCurrentWebviewWindow();
-            await win.setPosition(new PhysicalPosition(dragRef.current.currentX, dragRef.current.currentY));
-          }
-        } catch (err) {
-          console.error(`ERROR in setPosition: ${err.message || err}`);
-        }
-        dragRef.current.rafId = null;
-      });
+    try {
+      const win = getCurrentWebviewWindow();
+      if (win && typeof win.startDragging === "function") {
+        await win.startDragging();
+      }
+    } catch (err) {
+      console.error("Native startDragging error:", err);
     }
   };
-
-  const handleDragEnd = () => {
-    dragRef.current.isDragging = false;
-    if (dragRef.current.rafId) {
-      cancelAnimationFrame(dragRef.current.rafId);
-      dragRef.current.rafId = null;
-    }
-    document.removeEventListener("mousemove", handleDragMove);
-    document.removeEventListener("mouseup", handleDragEnd);
-  };
-
-  useEffect(() => {
-    return () => {
-      document.removeEventListener("mousemove", handleDragMove);
-      document.removeEventListener("mouseup", handleDragEnd);
-    };
-  }, []);
 
   // Theme Skin state loading
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
@@ -341,6 +272,10 @@ function App() {
   const [useProxy, setUseProxy] = useState("否");
   const [proxyAddr, setProxyAddr] = useState("");
   const [pollInterval, setPollInterval] = useState("60");
+  const [splitMode, setSplitMode] = useState("time");
+  const [splitTimeSecs, setSplitTimeSecs] = useState("1200");
+  const [splitSizeMb, setSplitSizeMb] = useState("1024");
+  const [splitVideoBitrateKbps, setSplitVideoBitrateKbps] = useState("8000");
   const [cookies, setCookies] = useState({});
   const [pushChannels, setPushChannels] = useState([]);
   const [dingtalkApi, setDingtalkApi] = useState("");
@@ -560,6 +495,10 @@ function App() {
           setUseProxy(res.settings.use_proxy ? "是" : "否");
           setProxyAddr(res.settings.proxy_addr || "");
           setPollInterval(res.settings.delay_default ? res.settings.delay_default.toString() : "300");
+          setSplitMode(res.settings.split_mode || "time");
+          setSplitTimeSecs(res.settings.split_time_secs ? res.settings.split_time_secs.toString() : "1200");
+          setSplitSizeMb(res.settings.split_size_mb ? res.settings.split_size_mb.toString() : "1024");
+          setSplitVideoBitrateKbps(res.settings.split_video_bitrate_kbps ? res.settings.split_video_bitrate_kbps.toString() : "8000");
         }
         if (res.cookies) {
           setCookies(res.cookies);
@@ -736,18 +675,18 @@ function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground transition-all duration-300">
       
-      {/* 1. Custom Titlebar for Tauri Frameless Window */}
+      {/* 1. Custom Titlebar for Tauri Frameless Window with Full Top Drag Region */}
       {!isWebMode() && (
-        <div className="fixed top-0 right-0 h-10 flex items-center justify-end z-50 select-none pr-2 bg-transparent">
-          <div className="flex items-center h-full">
-            {/* Grab handle */}
-            <div
-              className="flex items-center justify-center w-10 h-full text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing"
-              onMouseDown={handleDragStart}
-              title={lang === "zh" ? "拖动窗口" : "Drag Window"}
-            >
-              <GripHorizontal size={14} />
-            </div>
+        <div 
+          data-tauri-drag-region
+          onMouseDown={handleDragStart}
+          className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between z-40 select-none bg-transparent"
+        >
+          {/* Empty draggable space across the top bar */}
+          <div data-tauri-drag-region className="flex-1 h-full" />
+
+          {/* Window action buttons (isolated from drag events) */}
+          <div className="flex items-center h-full pr-2 z-50 pointer-events-auto cursor-default" onMouseDown={(e) => e.stopPropagation()}>
             {/* Language Switcher */}
             <button 
               className="flex items-center justify-center px-3.5 h-full text-xs font-bold text-muted-foreground hover:bg-secondary hover:text-foreground transition-all cursor-pointer mr-1"
@@ -796,10 +735,18 @@ function App() {
       />
 
       {/* 3. Main Console Viewport */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden bg-background relative px-4 md:px-8 pt-20 pb-6 md:py-6">
+      <main className={cn("flex-1 flex flex-col h-full overflow-hidden bg-background relative px-4 md:px-8 pb-6", isWebMode() ? "pt-6 md:pt-6" : "pt-16 md:pt-16")}>
         
-        {/* Header Title section */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-border/60 mb-5">
+        {/* Header Title section (with Drag Window capability) */}
+        <header 
+          data-tauri-drag-region
+          onMouseDown={(e) => {
+            if (!isWebMode() && e.target.tagName !== "BUTTON" && !e.target.closest("button") && !e.target.closest("input") && !e.target.closest("select")) {
+              handleDragStart(e);
+            }
+          }}
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-border/60 mb-5 select-none"
+        >
           <div className="space-y-1">
             <h1 className="text-xl font-bold tracking-tight text-foreground">
               {activeTab === "dashboard" && t("realtime_console", lang)}
@@ -942,6 +889,14 @@ function App() {
               setTgApiUrl={setTgApiUrl}
               tgAutoUpload={tgAutoUpload}
               setTgAutoUpload={setTgAutoUpload}
+              splitMode={splitMode}
+              setSplitMode={setSplitMode}
+              splitTimeSecs={splitTimeSecs}
+              setSplitTimeSecs={setSplitTimeSecs}
+              splitSizeMb={splitSizeMb}
+              setSplitSizeMb={setSplitSizeMb}
+              splitVideoBitrateKbps={splitVideoBitrateKbps}
+              setSplitVideoBitrateKbps={setSplitVideoBitrateKbps}
               cookies={cookies}
               setCookieModal={setCookieModal}
               handleSaveConfig={handleSaveConfig}

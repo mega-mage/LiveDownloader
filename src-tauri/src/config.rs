@@ -28,6 +28,18 @@ fn default_delay() -> u64 {
 fn default_server_port() -> u16 {
     10730
 }
+fn default_split_mode() -> String {
+    "time".to_string()
+}
+fn default_split_time_secs() -> u64 {
+    1200
+}
+fn default_split_size_mb() -> u64 {
+    1024
+}
+fn default_split_video_bitrate_kbps() -> u32 {
+    8000
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsConfig {
@@ -73,6 +85,18 @@ pub struct SettingsConfig {
 
     #[serde(default = "default_server_port")]
     pub server_port: u16,
+
+    #[serde(default = "default_split_mode")]
+    pub split_mode: String,
+
+    #[serde(default = "default_split_time_secs")]
+    pub split_time_secs: u64,
+
+    #[serde(default = "default_split_size_mb")]
+    pub split_size_mb: u64,
+
+    #[serde(default = "default_split_video_bitrate_kbps")]
+    pub split_video_bitrate_kbps: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -132,6 +156,10 @@ impl Default for AppConfig {
                 proxy_platforms: Vec::new(),
                 api_token: None,
                 server_port: default_server_port(),
+                split_mode: default_split_mode(),
+                split_time_secs: default_split_time_secs(),
+                split_size_mb: default_split_size_mb(),
+                split_video_bitrate_kbps: default_split_video_bitrate_kbps(),
             },
             cookies: HashMap::new(),
             push: PushConfig {
@@ -368,6 +396,10 @@ impl AppConfig {
                 proxy_platforms,
                 api_token: None,
                 server_port: default_server_port(),
+                split_mode: default_split_mode(),
+                split_time_secs: default_split_time_secs(),
+                split_size_mb: default_split_size_mb(),
+                split_video_bitrate_kbps: default_split_video_bitrate_kbps(),
             },
             cookies,
             push: PushConfig {

@@ -227,10 +227,10 @@ async fn api_get_recorded_videos(state: AxumState<SharedState>) -> Result<Json<V
                                 if parent != save_path {
                                     parent.file_name().and_then(|s| s.to_str()).unwrap_or("Unknown").to_string()
                                 } else {
-                                    "Unknown".to_string()
+                                    crate::commands::parse_anchor_from_filename(&name)
                                 }
                             } else {
-                                "Unknown".to_string()
+                                crate::commands::parse_anchor_from_filename(&name)
                             };
                             videos.push(RecordedVideo { name, path: path.to_string_lossy().to_string(), size, modified, anchor });
                         }

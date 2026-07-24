@@ -248,6 +248,10 @@ async fn monitor_room_loop(
             let r_config = config.read().await;
             let platform_cookie = r_config.cookies.get(handler.id())
                 .cloned()
+                .or_else(|| r_config.cookies.get("douyin").cloned())
+                .or_else(|| r_config.cookies.get("抖音").cloned())
+                .or_else(|| r_config.cookies.get("抖音cookie").cloned())
+                .or_else(|| r_config.cookies.get("douyin_cookie").cloned())
                 .or_else(|| {
                     let key = match handler.id() {
                         "douyin" => "抖音cookie",
@@ -330,33 +334,39 @@ async fn monitor_room_loop(
                         }
                         save_room_statuses(&statuses).await;
 
-                        // Telegram automatic upload task for completed segments
+                        // Segment monitoring task for real-time file moving and Telegram auto-upload
                         let output_template = session.output_file_path.clone();
+                        let target_dir_path = session.target_dir_path.clone();
                         let app_config_cloned = app_config.clone();
                         let display_name_str = display_name.to_string();
                         let notifier_cloned = crate::engine::notifier::Notifier::new();
                         
                         let (poll_stop_tx, mut poll_stop_rx) = tokio::sync::watch::channel(false);
                         
-                        let upload_handle = tokio::spawn(async move {
-                            if !app_config_cloned.push.tg_auto_upload {
-                                return;
-                            }
-                            let mut uploaded_files = std::collections::HashSet::new();
-                            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(15));
+                        let segment_handle = tokio::spawn(async move {
+                            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
                             
                             loop {
                                 tokio::select! {
                                     _ = interval.tick() => {
                                         let completed = find_completed_segments(&output_template, true);
                                         for file_path in completed {
-                                            if !uploaded_files.contains(&file_path) {
+                                            if app_config_cloned.push.tg_auto_upload {
                                                 let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                                                 let caption = format!("【自动上传切片】\n主播: {}\n文件: {}", display_name_str, file_name);
                                                 if let Err(e) = notifier_cloned.upload_file_to_telegram(&file_path, &caption, &app_config_cloned).await {
                                                     error!("Failed to upload segment {:?} to Telegram: {}", file_path, e);
-                                                } else {
-                                                    uploaded_files.insert(file_path);
+                                                }
+                                            }
+                                            if let Some(filename) = file_path.file_name() {
+                                                let _ = std::fs::create_dir_all(&target_dir_path);
+                                                let dest = target_dir_path.join(filename);
+                                                info!("Real-time segment move: Moving completed segment from downloading to final dir: {:?}", dest);
+                                                if let Err(e) = std::fs::rename(&file_path, &dest) {
+                                                    debug!("Rename failed for segment, falling back to copy/remove: {}", e);
+                                                    if let Err(err) = std::fs::copy(&file_path, &dest).and_then(|_| std::fs::remove_file(&file_path)) {
+                                                        error!("Failed to move completed segment {:?} to {:?}: {}", file_path, dest, err);
+                                                    }
                                                 }
                                             }
                                         }
@@ -372,13 +382,22 @@ async fn monitor_room_loop(
                             // One final check after FFmpeg exits
                             let completed = find_completed_segments(&output_template, false);
                             for file_path in completed {
-                                if !uploaded_files.contains(&file_path) {
+                                if app_config_cloned.push.tg_auto_upload {
                                     let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                                     let caption = format!("【自动上传切片】\n主播: {}\n文件: {}", display_name_str, file_name);
                                     if let Err(e) = notifier_cloned.upload_file_to_telegram(&file_path, &caption, &app_config_cloned).await {
                                         error!("Failed to upload final segment {:?} to Telegram: {}", file_path, e);
-                                    } else {
-                                        uploaded_files.insert(file_path);
+                                    }
+                                }
+                                if let Some(filename) = file_path.file_name() {
+                                    let _ = std::fs::create_dir_all(&target_dir_path);
+                                    let dest = target_dir_path.join(filename);
+                                    info!("Finalizing download: Moving final segment from downloading to final dir: {:?}", dest);
+                                    if let Err(e) = std::fs::rename(&file_path, &dest) {
+                                        debug!("Rename failed for final segment, falling back to copy/remove: {}", e);
+                                        if let Err(err) = std::fs::copy(&file_path, &dest).and_then(|_| std::fs::remove_file(&file_path)) {
+                                            error!("Failed to move final segment {:?} to {:?}: {}", file_path, dest, err);
+                                        }
                                     }
                                 }
                             }
@@ -404,9 +423,9 @@ async fn monitor_room_loop(
                             }
                         }
 
-                        // Stop the telegram upload loop and wait for final uploads
+                        // Stop the segment monitoring loop and wait for final uploads/moves
                         let _ = poll_stop_tx.send(true);
-                        let _ = upload_handle.await;
+                        let _ = segment_handle.await;
 
                         // Move files from downloading directory to final target directory
                         move_session_files_to_dest(&session.output_file_path, &session.target_dir_path);

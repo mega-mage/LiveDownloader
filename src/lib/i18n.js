@@ -60,7 +60,7 @@ export const translations = {
     tbl_video_name: "文件名称",
     tbl_video_size: "文件大小",
     tbl_video_date: "修改时间",
-    tbl_video_anchor: "所属主播",
+    tbl_video_anchor: "主播",
     btn_play: "放映",
     btn_download: "下载",
     no_recorded_videos: "暂无录制视频文件。当监控的主播开播后，系统将自动录制并保存在这里。",

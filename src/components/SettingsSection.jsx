@@ -14,7 +14,8 @@ import {
   Send,
   Sliders,
   Sparkles,
-  Link2
+  Link2,
+  Scissors
 } from "lucide-react";
 
 const getPlatformName = (name, lang) => {
@@ -51,6 +52,14 @@ export function SettingsSection({
   setUseProxy,
   proxyAddr,
   setProxyAddr,
+  splitMode,
+  setSplitMode,
+  splitTimeSecs,
+  setSplitTimeSecs,
+  splitSizeMb,
+  setSplitSizeMb,
+  splitVideoBitrateKbps,
+  setSplitVideoBitrateKbps,
   pushChannels,
   setPushChannels,
   dingtalkApi,
@@ -185,6 +194,85 @@ export function SettingsSection({
                   placeholder={t("poll_interval_placeholder", lang)}
                 />
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 2.5 Segment / Split Configurations */}
+        <Card className="border border-border bg-card/45 backdrop-blur-md shadow-md">
+          <CardHeader className="p-5 border-b border-border/50">
+            <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Scissors size={16} className="text-primary" />
+              <span>{lang === "zh" ? "录制分段切片设置" : "Recording Segment Settings"}</span>
+            </CardTitle>
+            <CardDescription className="text-xs text-muted-foreground mt-1">
+              {lang === "zh"
+                ? "配置直播保存时的自动分段切片模式（支持无缝按时长切片或按文件大小切片）"
+                : "Configure video/audio segmentation mode (Seamless duration or size-based splitting)"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-foreground/80">
+                  {lang === "zh" ? "分段切片模式" : "Split Mode"}
+                </label>
+                <Select value={splitMode} onChange={(e) => setSplitMode(e.target.value)}>
+                  <option value="time">{lang === "zh" ? "按时长切片 (推荐无缝切片)" : "Split by Duration (Time)"}</option>
+                  <option value="size">{lang === "zh" ? "按文件大小切片 (单进程无缝切片)" : "Split by File Size"}</option>
+                  <option value="none">{lang === "zh" ? "不切片 (单文件保存)" : "Single File (No Split)"}</option>
+                </Select>
+              </div>
+
+              {splitMode === "time" && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-foreground/80">
+                    {lang === "zh" ? "每段时长 (秒)" : "Segment Duration (Seconds)"}
+                  </label>
+                  <Input
+                    type="number"
+                    value={splitTimeSecs}
+                    onChange={(e) => setSplitTimeSecs(e.target.value)}
+                    placeholder="1200"
+                  />
+                  <p className="text-xxs text-muted-foreground">
+                    {lang === "zh" ? "默认 1200 秒（即 20 分钟/段）" : "Default: 1200 seconds (20 minutes)"}
+                  </p>
+                </div>
+              )}
+
+              {splitMode === "size" && (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-foreground/80">
+                      {lang === "zh" ? "目标单文件大小 (MB)" : "Target File Size (MB)"}
+                    </label>
+                    <Input
+                      type="number"
+                      value={splitSizeMb}
+                      onChange={(e) => setSplitSizeMb(e.target.value)}
+                      placeholder="1024"
+                    />
+                    <p className="text-xxs text-muted-foreground">
+                      {lang === "zh" ? "例如 1024 表示每 1GB 自动生成新切片" : "Example: 1024 = 1GB per segment"}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-foreground/80">
+                      {lang === "zh" ? "估算画质码率 (kbps)" : "Estimated Bitrate (kbps)"}
+                    </label>
+                    <Input
+                      type="number"
+                      value={splitVideoBitrateKbps}
+                      onChange={(e) => setSplitVideoBitrateKbps(e.target.value)}
+                      placeholder="8000"
+                    />
+                    <p className="text-xxs text-muted-foreground">
+                      {lang === "zh" ? "原画约 8000~12000, 高清约 4000~6000 kbps" : "Original ~8000, HD ~4000 kbps"}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
