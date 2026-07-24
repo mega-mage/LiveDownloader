@@ -134,6 +134,7 @@ jobs:
   # ============================================================================
   build-server:
     name: Server Binary (${{ matrix.arch_name }})
+    needs: build-desktop
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -192,10 +193,10 @@ jobs:
           name: livedownloader-server-linux-${{ matrix.arch_name }}
           path: build_output/livedownloader-server-linux-${{ matrix.arch_name }}
 
-      - name: Upload Server Binary to GitHub Release (Tag Trigger Only)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload Server Binary to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
           files: build_output/livedownloader-server-linux-${{ matrix.arch_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
