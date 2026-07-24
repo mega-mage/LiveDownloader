@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# LiveDownloader - 多架构 (x86_64 / ARM64 / ARMv7) 服务器端安装与更新脚本
+# LiveDownloader - 多架构 (x86_64 / ARM64 / ARMv7) 服务器端安装与运维管理脚本
 # ==============================================================================
 # 支持架构：
 #  - x86_64 / amd64 (标准 64 位 PC / 云服务器)
@@ -9,9 +9,14 @@
 #
 # 使用方法:
 #   chmod +x install_server.sh
-#   sudo ./install_server.sh            # 交互式菜单
+#   sudo ./install_server.sh            # 交互式管理菜单
 #   sudo ./install_server.sh install    # 直接安装
 #   sudo ./install_server.sh update     # 直接更新
+#   sudo ./install_server.sh start      # 启动服务
+#   sudo ./install_server.sh stop       # 停止服务
+#   sudo ./install_server.sh restart    # 重启服务
+#   sudo ./install_server.sh status     # 查看状态
+#   sudo ./install_server.sh logs       # 查看运行日志
 #   sudo ./install_server.sh uninstall  # 直接卸载
 # ==============================================================================
 
@@ -32,14 +37,55 @@ DEST_BIN="/usr/bin/livedownloader"
 DEST_ALIAS="/usr/bin/ld-server"
 SYSTEMD_PATH="/etc/systemd/system/livedownloader.service"
 WORK_DIR="/var/lib/livedownloader"
+DEFAULT_PORT="10730"
 
-# GitHub 仓库地址 (用于自动下载对应架构的预编译二进制)
+# GitHub 仓库地址
 GITHUB_REPO="mega-mage/LiveDownloader"
+
+# GitHub 加速镜像前缀（网络不佳时备选）
+MIRRORS=(
+    ""
+    "https://ghproxy.net/"
+    "https://mirror.ghproxy.com/"
+    "https://ghp.ci/"
+)
 
 check_root() {
     if [ "$EUID" -ne 0 ]; then
         log_error "请使用 root 权限运行此脚本 (例如: sudo $0)"
         exit 1
+    fi
+}
+
+# 检查并自动安装 FFmpeg 依赖
+check_ffmpeg() {
+    if command -v ffmpeg &> /dev/null; then
+        log_success "检测到 FFmpeg 已安装: $(ffmpeg -version | head -n 1)"
+        return 0
+    fi
+
+    log_warn "未检测到系统安装 FFmpeg！LiveDownloader 录制视频流依赖 FFmpeg。"
+    read -p "是否尝试通过包管理器自动安装 FFmpeg？ [Y/n]: " inst_ff
+    inst_ff=${inst_ff:-Y}
+    if [[ "$inst_ff" =~ ^[Yy]$ ]]; then
+        log_info "正在尝试自动安装 FFmpeg..."
+        if command -v apt-get &> /dev/null; then
+            apt-get update && apt-get install -y ffmpeg
+        elif command -v dnf &> /dev/null; then
+            dnf install -y ffmpeg
+        elif command -v yum &> /dev/null; then
+            yum install -y ffmpeg
+        elif command -v pacman &> /dev/null; then
+            pacman -Sy --noconfirm ffmpeg
+        elif command -v apk &> /dev/null; then
+            apk add ffmpeg
+        elif command -v zypper &> /dev/null; then
+            zypper install -y ffmpeg
+        else
+            log_error "未能识别的包管理器，请手动安装 ffmpeg 后再运行本服务！"
+        fi
+    else
+        log_warn "跳过 FFmpeg 安装，请确保稍后手动配置或放置 FFmpeg 可执行文件。"
     fi
 }
 
@@ -89,21 +135,28 @@ obtain_binary() {
         fi
     done
 
-    # 2. 尝试从 GitHub Releases 下载当前架构的预编译二进制
+    # 2. 尝试从 GitHub Releases 下载当前架构的预编译二进制（支持加速镜像重试）
     log_info "未在本地找到预编译文件，尝试从 GitHub Release 下载 [${ARCH}] 架构二进制..."
-    DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/livedownloader-server-linux-${ARCH}"
     TMP_BIN="./livedownloader-server-linux-${ARCH}"
+    RAW_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/livedownloader-server-linux-${ARCH}"
 
     DOWNLOAD_SUCCESS=false
-    if command -v curl &> /dev/null; then
-        if curl -fsSL -o "$TMP_BIN" "$DOWNLOAD_URL"; then
-            DOWNLOAD_SUCCESS=true
+    for mirror in "${MIRRORS[@]}"; do
+        DOWNLOAD_URL="${mirror}${RAW_URL}"
+        log_info "尝试下载链接: ${DOWNLOAD_URL}"
+        
+        if command -v curl &> /dev/null; then
+            if curl -fsSL --connect-timeout 10 -o "$TMP_BIN" "$DOWNLOAD_URL"; then
+                DOWNLOAD_SUCCESS=true
+                break
+            fi
+        elif command -v wget &> /dev/null; then
+            if wget -q --timeout=10 -O "$TMP_BIN" "$DOWNLOAD_URL"; then
+                DOWNLOAD_SUCCESS=true
+                break
+            fi
         fi
-    elif command -v wget &> /dev/null; then
-        if wget -q -O "$TMP_BIN" "$DOWNLOAD_URL"; then
-            DOWNLOAD_SUCCESS=true
-        fi
-    fi
+    done
 
     if [ "$DOWNLOAD_SUCCESS" = true ] && [ -f "$TMP_BIN" ] && [ -s "$TMP_BIN" ]; then
         chmod +x "$TMP_BIN"
@@ -111,7 +164,7 @@ obtain_binary() {
         FOUND_BIN="$(realpath "$TMP_BIN")"
         return 0
     else
-        log_warn "下载预编译文件失败（可能尚无 Release 版本或网络无法连接 GitHub）。"
+        log_warn "从 GitHub/镜像源下载预编译文件失败（可能网络受限或尚无对应 Release）。"
     fi
 
     # 3. 回退到本地 Cargo 编译
@@ -146,26 +199,47 @@ obtain_binary() {
     fi
 }
 
+# 配置防火墙端口提示与自动放行
+configure_firewall() {
+    local port="$1"
+    if command -v ufw &> /dev/null && ufw status | grep -q "active"; then
+        log_info "检测到 UFW 防火墙启用，尝试放行端口 ${port}/tcp..."
+        ufw allow "${port}/tcp" || true
+    elif command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then
+        log_info "检测到 Firewalld 启用，尝试放行端口 ${port}/tcp..."
+        firewall-cmd --permanent --add-port="${port}/tcp" || true
+        firewall-cmd --reload || true
+    fi
+}
+
 # 1. 安装
 do_install() {
     check_root
+    check_ffmpeg
     obtain_binary
+
+    PORT="${SERVER_PORT:-$DEFAULT_PORT}"
+    if [ -t 0 ] && [ -z "$SERVER_PORT" ]; then
+        read -p "请输入服务器监听端口 (默认 ${DEFAULT_PORT}): " input_port
+        PORT="${input_port:-$DEFAULT_PORT}"
+    fi
 
     log_info "正在将二进制文件安装至 ${DEST_BIN}..."
     install -m 755 "$FOUND_BIN" "$DEST_BIN"
     ln -sf "$DEST_BIN" "$DEST_ALIAS"
 
-    log_info "配置 systemd 服务 ${SYSTEMD_PATH}..."
+    log_info "配置 systemd 服务 ${SYSTEMD_PATH} (监听端口: ${PORT})..."
     cat <<EOF > "$SYSTEMD_PATH"
 [Unit]
 Description=LiveDownloader Backend Service
-After=network.target
+After=network.target network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=${WORK_DIR}
-ExecStart=${DEST_BIN} --server --port 10730
+ExecStart=${DEST_BIN} --server --port ${PORT}
 Restart=on-failure
 RestartSec=5s
 LimitNOFILE=65536
@@ -176,13 +250,20 @@ EOF
 
     mkdir -p "$WORK_DIR"
     systemctl daemon-reload || true
+    systemctl enable livedownloader
+    systemctl restart livedownloader
+
+    configure_firewall "$PORT"
 
     log_success "===================================================="
-    log_success "  LiveDownloader 服务端 [${ARCH}] 安装完成！"
+    log_success "  LiveDownloader 服务端 [${ARCH}] 安装完成并自动启动！"
     log_success "===================================================="
+    echo -e "${CYAN}服务端口:${NC} ${PORT}"
+    echo -e "${CYAN}数据目录:${NC} ${WORK_DIR}"
     echo -e "${CYAN}启动服务:${NC} systemctl start livedownloader"
-    echo -e "${CYAN}开机自启:${NC} systemctl enable livedownloader"
+    echo -e "${CYAN}停止服务:${NC} systemctl stop livedownloader"
     echo -e "${CYAN}查看状态:${NC} systemctl status livedownloader"
+    echo -e "${CYAN}实时日志:${NC} journalctl -u livedownloader -f"
 }
 
 # 2. 更新
@@ -191,7 +272,7 @@ do_update() {
 
     log_info "开始更新流程..."
 
-    # 清理掉旧的临时下载文件，确保获取最新版本的二进制
+    # 清理旧临时文件
     rm -f ./livedownloader-server-linux-*
 
     if [ -d "../.git" ] || [ -d ".git" ]; then
@@ -218,7 +299,39 @@ do_update() {
     systemctl status livedownloader --no-pager || true
 }
 
-# 3. 卸载
+# 3. 服务控制函数
+do_start() {
+    check_root
+    log_info "正在启动 LiveDownloader 服务..."
+    systemctl start livedownloader
+    log_success "服务已启动！"
+    systemctl status livedownloader --no-pager || true
+}
+
+do_stop() {
+    check_root
+    log_info "正在停止 LiveDownloader 服务..."
+    systemctl stop livedownloader
+    log_success "服务已停止！"
+}
+
+do_restart() {
+    check_root
+    log_info "正在重启 LiveDownloader 服务..."
+    systemctl restart livedownloader
+    log_success "服务已重启！"
+    systemctl status livedownloader --no-pager || true
+}
+
+do_status() {
+    systemctl status livedownloader --no-pager || true
+}
+
+do_logs() {
+    journalctl -u livedownloader -f -n 100
+}
+
+# 4. 卸载
 do_uninstall() {
     check_root
 
@@ -264,16 +377,26 @@ if [ -z "$ACTION" ]; then
     echo -e "${CYAN}====================================================${NC}"
     echo -e " 1) 安装 (Install)"
     echo -e " 2) 更新 (Update)"
-    echo -e " 3) 卸载 (Uninstall)"
-    echo -e " 4) 退出 (Exit)"
+    echo -e " 3) 启动服务 (Start)"
+    echo -e " 4) 停止服务 (Stop)"
+    echo -e " 5) 重启服务 (Restart)"
+    echo -e " 6) 查看状态 (Status)"
+    echo -e " 7) 查看日志 (Logs)"
+    echo -e " 8) 卸载 (Uninstall)"
+    echo -e " 9) 退出 (Exit)"
     echo -e "${CYAN}====================================================${NC}"
-    read -p "请输入选项数字 [1-4]: " CHOICE
+    read -p "请输入选项数字 [1-9]: " CHOICE
 
     case "$CHOICE" in
         1) ACTION="install" ;;
         2) ACTION="update" ;;
-        3) ACTION="uninstall" ;;
-        4) exit 0 ;;
+        3) ACTION="start" ;;
+        4) ACTION="stop" ;;
+        5) ACTION="restart" ;;
+        6) ACTION="status" ;;
+        7) ACTION="logs" ;;
+        8) ACTION="uninstall" ;;
+        9) exit 0 ;;
         *) log_error "无效选项！"; exit 1 ;;
     esac
 fi
@@ -285,11 +408,26 @@ case "$ACTION" in
     update)
         do_update
         ;;
+    start)
+        do_start
+        ;;
+    stop)
+        do_stop
+        ;;
+    restart)
+        do_restart
+        ;;
+    status)
+        do_status
+        ;;
+    logs)
+        do_logs
+        ;;
     uninstall)
         do_uninstall
         ;;
     *)
-        log_error "未知指令: ${ACTION}。可用参数: install | update | uninstall"
+        log_error "未知指令: ${ACTION}。可用参数: install | update | start | stop | restart | status | logs | uninstall"
         exit 1
         ;;
 esac
