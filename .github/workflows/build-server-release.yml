@@ -1,0 +1,85 @@
+name: Build & Release Multi-Arch Server Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-server-matrix:
+    name: Build Linux (${{ matrix.arch_name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch_name: amd64
+            use_cross: false
+
+          - target: aarch64-unknown-linux-musl
+            arch_name: arm64
+            use_cross: true
+
+          - target: armv7-unknown-linux-musleabihf
+            arch_name: armv7
+            use_cross: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Musl Tools & Cross
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cargo install cross --git https://github.com/cross-rs/cross
+          fi
+
+      - name: Build Server Binary (x86_64 musl)
+        if: matrix.use_cross == false
+        run: |
+          cd src-tauri
+          cargo build --target ${{ matrix.target }} --release --no-default-features --features server
+
+      - name: Build Server Binary (Cross ARM64 / ARMv7)
+        if: matrix.use_cross == true
+        run: |
+          cd src-tauri
+          cross build --target ${{ matrix.target }} --release --no-default-features --features server
+
+      - name: Prepare Binary Artifact
+        run: |
+          mkdir -p build_output
+          BIN_NAME="livedownloader-server-linux-${{ matrix.arch_name }}"
+          cp src-tauri/target/${{ matrix.target }}/release/LiveDownloader "build_output/${BIN_NAME}"
+          chmod +x "build_output/${BIN_NAME}"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: livedownloader-server-linux-${{ matrix.arch_name }}
+          path: build_output/livedownloader-server-linux-${{ matrix.arch_name }}
+
+      - name: Create Release & Upload Assets (Tag Trigger Only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build_output/livedownloader-server-linux-${{ matrix.arch_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
