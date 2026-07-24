@@ -17,7 +17,11 @@ env:
 
 jobs:
   # ============================================================================
+<<<<<<< HEAD
   # 1. Desktop GUI Build Job (Tauri: Windows, macOS, Linux x86_64 / ARM64)
+=======
+  # 1. Desktop GUI Build Job (Tauri v2: Windows, macOS, Linux x86_64 / ARM64)
+>>>>>>> 5a499227bdf9a540cc6324713eed7b78745ac13e
   # ============================================================================
   build-desktop:
     name: Desktop GUI (${{ matrix.platform }})
@@ -38,10 +42,16 @@ jobs:
             platform: linux-amd64
             args: ""
 
+<<<<<<< HEAD
           - os: ubuntu-latest
             platform: linux-arm64
             args: "--target aarch64-unknown-linux-gnu"
             target: aarch64-unknown-linux-gnu
+=======
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            args: ""
+>>>>>>> 5a499227bdf9a540cc6324713eed7b78745ac13e
 
     steps:
       - name: Checkout repository
@@ -56,22 +66,33 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+<<<<<<< HEAD
           targets: ${{ matrix.target || (matrix.platform == 'macos-universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '') }}
+=======
+          targets: ${{ matrix.platform == 'macos-universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+>>>>>>> 5a499227bdf9a540cc6324713eed7b78745ac13e
 
       - name: Install Linux Desktop Dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
+<<<<<<< HEAD
           if [ "${{ matrix.platform }}" = "linux-arm64" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           fi
+=======
+>>>>>>> 5a499227bdf9a540cc6324713eed7b78745ac13e
 
       - name: Install Frontend Dependencies
         run: npm ci || npm install
 
       - name: Build Desktop Application (Tauri Action)
+<<<<<<< HEAD
         uses: tauri-apps/tauri-action@v0
+=======
+        uses: tauri-apps/tauri-action@v2
+>>>>>>> 5a499227bdf9a540cc6324713eed7b78745ac13e
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
