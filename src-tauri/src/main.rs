@@ -263,6 +263,25 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .unwrap_or(10730)
         });
 
+    // Handle --token / --api-token command-line flag if provided
+    if let Some(pos) = args.iter().position(|a| a == "--token" || a == "--api-token") {
+        if let Some(token_val) = args.get(pos + 1) {
+            let mut config = AppConfig::load_or_create(&config_toml_path)?;
+            if token_val == "clear" || token_val == "none" {
+                config.settings.api_token = None;
+                println!("已成功清除 API Token 配置。");
+            } else {
+                config.settings.api_token = Some(token_val.trim().to_string());
+                println!("已成功保存 API Token: {}", token_val.trim());
+            }
+            config.save_to_file(&config_toml_path)?;
+            // If only setting token without --server flag, exit after saving
+            if !is_server_mode && args.len() <= 3 {
+                return Ok(());
+            }
+        }
+    }
+
     if is_server_mode {
         init_logging(&config_toml_path)?;
         info!("Starting LiveDownloader in Web Server mode...");
@@ -280,9 +299,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    // CLI mode: filter out --server/--port flags
+    // CLI mode: filter out --server/--port/--token flags
     let has_cli_args = args.iter().skip(1)
-        .any(|a| a != "--server" && a != "--port" && !a.parse::<u16>().is_ok());
+        .any(|a| a != "--server" && a != "--port" && a != "--token" && a != "--api-token" && !a.parse::<u16>().is_ok());
 
     if has_cli_args && !is_server_mode {
         if let Err(e) = cli::run_cli_commands(&config_toml_path) {
