@@ -1,149 +1,154 @@
 # LiveDownloader
 
-LiveDownloader is a modern, visually stunning automated live stream recording   system designed for major streaming platforms. This repository contains the front-end UI project, which can run seamlessly as a standalone **web application** (communicating with remote servers or NAS backend APIs) or a native **desktop client** (powered by Tauri and Rust).
+LiveDownloader is a modern, visually stunning automated live stream recording and scheduling management system designed for major streaming platforms. It runs seamlessly as a standalone **web application** (communicating with remote servers or NAS backend APIs) or a native **desktop client** (powered by Tauri v2 + Rust).
 
 ---
 
-## 🚀 Core Modules
+## 🚀 Core Features & Highlights
 
 1. **Real-time Dashboard**:
-   - Monitored Anchors List: Track room states (Living, Idle/Offline, Paused) in responsive tables or grid cards.
-   - Quick Actions: Toggle stream recording status, pause/resume monitoring, delete rooms, view configs, or play active streams.
-   - Fast Room Adding: Supports URL parsing for Bilibili, Douyin, Huya, Kuaishou, Douyu, Missevan, NetEase CC, Weibo, Taobao, AcFun, and Twitch.
-2. **Recorded Videos**:
-   - Fuzzy double filtering on file names and anchor aliases.
-   - Unique "Anchor Filter Dropdown" to locate all clips belonging to a specific anchor immediately.
-   - Built-in stream player (runs on a separate connection without affecting background recording).
-3. **System Settings**:
-   - Connection Config: Adjust remote API server base URLs and auth tokens.
-   - Basic Parameters: Set default save paths (`./downloads`), media extensions, and poll cycles.
-   - Global Proxies: Network rules for global platforms (e.g., Twitch stream crawling).
-   - Instant Pushes: Supports DingTalk webhooks, Bark iOS notifications, Telegram status updates, and auto-upload of recording segments (up to 2GB).
-   - Credentials Management (Cookies): Store platform cookies to unlock premium, high-definition streams (Source quality/1080p).
-4. **Logs & Interactive CLI Console**:
-   - Real-time backend system trace logging.
-   - Integrated shell executor (ld CLI) allowing execution of core commands (e.g., `ls`, `add`, `push test`) with terminal response feedbacks.
+   - **Live Monitoring**: Track room status (Living, Offline, Paused) in responsive tables or grid cards.
+   - **Quick Actions**: Toggle stream recording status, pause/resume monitoring, delete rooms, view configs, or play active streams.
+   - **Supported Platforms**: Bilibili, Douyin, Huya, Kuaishou, Douyu, Missevan, NetEase CC, Weibo, Taobao, AcFun, and Twitch.
+2. **Real-time Live Stream Player (FFmpeg HLS Remux)**:
+   - Innovative backend **/live** proxy endpoint that dynamically remuxes FLV/HLS/RTMP streams into standard HLS segments via FFmpeg.
+   - Front-end HLS.js player integration that allows live watching **without interfering** with background recording.
+   - Automatic session manager that cleanly terminates FFmpeg processes and temp files after 30s of inactivity.
+3. **Recorded Video Management**:
+   - Fuzzy double filtering on file names and anchor aliases, plus dedicated "Anchor Filter Dropdowns".
+   - Signed temporary download links, inline web playback, and physical file deletion.
+4. **System Settings**:
+   - Connection Auth: Configure remote API server URLs and authentication tokens (supports CLI and API Token).
+   - Basic Parameters: Default video save paths, formats (TS/MP4/MKV/FLV/MP3/M4A), segment splitting, and poll cycles.
+   - Network & Notifications: Global network proxies, DingTalk webhooks, Bark iOS notifications, Telegram status updates, and auto-upload of recording segments (up to 2GB).
+   - Credentials (Cookies): Store platform cookies to unlock premium, high-definition streams (Source/Blu-ray 1080p).
+5. **Multi-Arch & Automated DevOps (CI/CD & Shell Automation)**:
+   - **One-Click Server Install Script**: Supports Linux (x86_64, ARM64, ARMv7), auto-detects CPU architecture, and supports pre-compiled zero-build installs (fetches binaries directly from GitHub Releases).
+   - **Caddy HTTPS Setup Script**: Installs Caddy, configures Let's Encrypt / ZeroSSL, and automatically applies `flush_interval -1` optimization for `/live/*` paths for zero-latency playback.
+   - **GitHub Actions Multi-Arch Release**: Builds Windows, macOS (Universal), Linux GUI packages, and multi-arch Server binaries.
 
 ---
 
 ## 🛠️ Technology Stack
 
-- **Core**: React + Vite (JavaScript)
-- **Styling**: Tailwind CSS v4 (configured via `@import "tailwindcss"` and `@theme` parameters)
+- **Core**: React 19 + Vite (JavaScript)
+- **Styling**: Tailwind CSS v4
 - **Icons**: Lucide React
-- **App Shell**: Tauri (Rust wrapper for desktop integration)
+- **App Shell**: Tauri v2 (Rust)
+- **Backend Framework**: Axum + Tokio (Rust)
 
 ---
 
 ## 📦 Quick Start & Development
 
-### 0. ffmpeg
-Make sure you have [ffmpeg](https://www.ffmpeg.org/download.html) installed
+### 0. Prerequisites
+Make sure [FFmpeg](https://www.ffmpeg.org/download.html) is installed on your system (required for backend recording and live stream remuxing).
 
-### 1. Install Dependencies
-Make sure you have [Node.js](https://nodejs.org/) installed, then run in project root directory:
+### 1. Install & Build Frontend
 ```bash
+# Install dependencies
 npm install
-```
 
-### 2. Run Local Development Server
-Launch Vite preview server:
-```bash
+# Launch development server (http://localhost:5173)
 npm run dev
-```
-Open your browser and navigate to `http://localhost:5173`.
 
-### 3. Build Production Bundles
-Compile and compress front-end static files:
-```bash
+# Build production bundle (outputs to dist/)
 npm run build
 ```
-Production assets will be compiled to the `dist/` directory.
 
-### 4. Run Tauri Desktop App (Rust toolchain required)
-If you wish to compile or execute the desktop client:
+### 2. Desktop GUI (Tauri App)
 ```bash
 # Run in dev mode
 npm run tauri dev
 
-# Package for desktop installation
+# Build desktop packages (.msi / .dmg / .deb / .AppImage)
 npm run tauri build
 ```
 
-## 📱 Android Local Deployment Guide (APK Frontend + Termux Backend)
+---
 
-If you want to achieve completely independent local stream recording on your Android device, you can use the **"Frontend packaged as standalone APK + Backend running locally inside Termux"** solution.
+## 🐧 Linux Server Deployment (Server Mode)
 
-### 1. Build and Package Frontend as APK
-1. Under the project root, initialize Capacitor to set up Android builds:
-   ```bash
-   npm install @capacitor/core @capacitor/cli
-   npx cap init LiveDownloader com.livedownloader.app --web-dir=dist
-   npm install @capacitor/android
-   npx cap add android
-   ```
-2. Whenever frontend codes update, sync files and build APK with Android Studio:
-   ```bash
-   npm run build
-   npx cap sync
-   npx cap open android
-   # Build, package and install Release APK from Android Studio
-   ```
-3. In the settings page of the installed Android App, configure the Remote API Address to point to local loopback: `http://127.0.0.1:10730`.
+### 1. One-Click Installation Script (Recommended)
+Run the setup script inside `src-tauri`. It will auto-detect your server CPU architecture (x86_64 / ARM64 / ARMv7), download the matching pre-compiled binary, and configure Systemd:
 
-### 2. Setup Local Backend inside Termux
-1. Install the latest version of [Termux (F-Droid Build)](https://f-droid.org/zh_CN/packages/com.termux/).
-2. Start Termux shell, update repositories and install dependencies:
-   ```bash
-   pkg update && pkg upgrade -y
-   pkg install ffmpeg rust git -y
-   ```
-3. Clone and compile the Rust backend executable directly on your phone:
-   ```bash
-   git clone <Backend-Git-Repository-URL>
-   cd <backend-folder>
-   cargo build --release
-   ./target/release/livedownloader --server --port 10730
-   ```
+```bash
+cd src-tauri
+chmod +x install_server.sh
+sudo ./install_server.sh
+```
 
-### 💡 Key Tuning & Optimizations
-- **Shared Storage Mapping**: To ensure recorded videos can be accessed by default Android Movies galleries, run `termux-setup-storage` inside Termux to request storage permissions, then set your default video directory path in configurations to `/storage/emulated/0/Movies/LiveDownloader`.
-- **Prevent App Background Killing**:
-  1. Pull down the notifications menu and click **Acquire wakelock** inside the Termux notification banner to keep the CPU awake.
-  2. Under system Settings > App Manager > Termux > Battery Management, check **"Unrestricted / Run in Background"**.
+**Script Quick Commands**:
+- Install service: `sudo ./install_server.sh install`
+- Update service: `sudo ./install_server.sh update`
+- Uninstall service: `sudo ./install_server.sh uninstall`
+
+**Systemd Service Management**:
+```bash
+sudo systemctl start livedownloader    # Start
+sudo systemctl status livedownloader   # Status
+sudo systemctl enable livedownloader   # Auto-start on boot
+```
+
+### 2. Configure Caddy Automatic HTTPS
+Run the reverse proxy script in the root directory:
+```bash
+chmod +x setup_caddy_https.sh
+sudo ./setup_caddy_https.sh live.yourdomain.com 10730
+```
+
+### 3. API Token Security
+- **CLI Management**:
+  ```bash
+  livedownloader token your_secret_token_123   # Set Token
+  livedownloader token                         # View Token
+  livedownloader token clear                   # Clear Token
+  ```
+- **Server Start Flag**:
+  ```bash
+  livedownloader --server --port 10730 --token your_secret_token_123
+  ```
 
 ---
 
-## 📁 Directory Structures
+## 📱 Android Local Deployment (APK Frontend + Termux Backend)
+
+To run LiveDownloader standalone on an Android phone, use the **Capacitor APK + Termux Backend** approach:
+
+### 1. Build APK
+```bash
+npm install @capacitor/core @capacitor/cli @capacitor/android
+npx cap init LiveDownloader com.livedownloader.app --web-dir=dist
+npx cap add android
+npm run build && npx cap sync && npx cap open android
+```
+
+### 2. Run Backend in Termux
+Install Rust and FFmpeg inside [Termux](https://f-droid.org/zh_CN/packages/com.termux/):
+```bash
+pkg update && pkg install ffmpeg rust git -y
+git clone https://github.com/mega-mage/LiveDownloader.git
+cd LiveDownloader/src-tauri
+cargo build --release --no-default-features --features server
+./target/release/LiveDownloader --server --port 10730
+```
+
+---
+
+## 📁 Directory Structure
 
 ```text
-├── src/
-│   ├── components/       # UI components directory
-│   │   ├── ui/           # Basic UI components (Card, Button, Table, Input, etc.)
-│   │   ├── Sidebar.jsx   # Responsive side navigation drawer
-│   │   ├── RoomSection.jsx    # Dashboard monitoring tables & form adding
-│   │   ├── VideoSection.jsx   # Recorded videos list, filters, and stream plays
-│   │   ├── SettingsSection.jsx# System setting fields (with sticky save footer)
-│   │   ├── LogViewer.jsx # Run log output window & terminal CLI console
-│   │   ├── ThemeSelector.jsx  # Presets, theme shuffle, and custom save slot
-│   │   └── ModalOverlays.jsx  # Watch streams layer, raw cookie config modal
-│   ├── lib/
-│   │   ├── i18n.js       # Dynamic translation keys & translate function t()
-│   │   └── utils.js      # Utility class consolidations (clsx & tailwind-merge)
-│   ├── services/
-│   │   └── api.js        # Backend API service bridges
-│   ├── App.jsx           # Main controller, handles global states & theme systems
-│   ├── index.css         # Styling entryway, defines custom theme variables
-│   └── main.jsx          # Entry renderer
-├── index.html            # Main HTML layout template
-├── vite.config.js        # Vite configurations (alias mapping & plugin imports)
-├── package.json          # Dependencies & execution scripts
-└── components.json       # shadcn/ui components configuration file
+├── .github/workflows/   # GitHub Actions multi-arch Release CI/CD workflow
+├── setup_caddy_https.sh # Caddy HTTPS deployment & stream optimization script
+├── src/                 # React frontend UI components & API service bridge
+├── src-tauri/           # Rust backend core, platform parsers & install_server.sh script
+├── dist/                # Production frontend bundle
+├── package.json         # Frontend dependencies & scripts
+└── vite.config.js       # Vite configuration
 ```
 
 ---
 
 ## 🤝 Contribution
 
-Contributions, pull requests, and feature suggestions are welcome!
-When proposing code modifications, please verify that responsiveness and multi-theme design adaptations are well-preserved.
+Contributions, pull requests, and feature suggestions are welcome! Please ensure responsive design and theme compatibility are maintained.
