@@ -1,0 +1,150 @@
+name: Build & Release (Desktop GUI + Server)
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ============================================================================
+  # 1. Desktop GUI Build Job (Tauri v2: Windows, macOS, Linux x86_64 / ARM64)
+  # ============================================================================
+  build-desktop:
+    name: Desktop GUI (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-amd64
+            args: ""
+
+          - os: macos-latest
+            platform: macos-universal
+            args: "--target universal-apple-darwin"
+
+          - os: ubuntu-latest
+            platform: linux-amd64
+            args: ""
+
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            args: ""
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install Linux Desktop Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
+
+      - name: Install Frontend Dependencies
+        run: npm ci || npm install
+
+      - name: Build Desktop Application (Tauri Action)
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'LiveDownloader v__VERSION__'
+          releaseBody: 'See the assets below to download LiveDownloader Desktop App or Server Binary for your platform.'
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
+
+  # ============================================================================
+  # 2. Server Binary Build Job (Linux Multi-Arch: amd64, arm64, armv7)
+  # ============================================================================
+  build-server:
+    name: Server Binary (${{ matrix.arch_name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch_name: amd64
+            use_cross: false
+
+          - target: aarch64-unknown-linux-musl
+            arch_name: arm64
+            use_cross: true
+
+          - target: armv7-unknown-linux-musleabihf
+            arch_name: armv7
+            use_cross: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Musl Tools & Cross
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cargo install cross --git https://github.com/cross-rs/cross
+          fi
+
+      - name: Build Server Binary (x86_64 musl)
+        if: matrix.use_cross == false
+        run: |
+          cd src-tauri
+          cargo build --target ${{ matrix.target }} --release --no-default-features --features server
+
+      - name: Build Server Binary (Cross ARM64 / ARMv7)
+        if: matrix.use_cross == true
+        run: |
+          cd src-tauri
+          cross build --target ${{ matrix.target }} --release --no-default-features --features server
+
+      - name: Prepare Server Binary Artifact
+        run: |
+          mkdir -p build_output
+          BIN_NAME="livedownloader-server-linux-${{ matrix.arch_name }}"
+          cp src-tauri/target/${{ matrix.target }}/release/LiveDownloader "build_output/${BIN_NAME}"
+          chmod +x "build_output/${BIN_NAME}"
+
+      - name: Upload Server Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: livedownloader-server-linux-${{ matrix.arch_name }}
+          path: build_output/livedownloader-server-linux-${{ matrix.arch_name }}
+
+      - name: Upload Server Binary to GitHub Release (Tag Trigger Only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build_output/livedownloader-server-linux-${{ matrix.arch_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
