@@ -447,6 +447,7 @@ pub async fn delete_video_file(state: tauri::State<'_, AppState>, path: String) 
     let config = AppConfig::load_or_create(&state.config_toml_path).map_err(|e| e.to_string())?;
 
     // Directory traversal security check
+    let _ = std::fs::create_dir_all(&config.settings.save_path);
     let save_path = std::fs::canonicalize(&config.settings.save_path)
         .map_err(|e| format!("Failed to canonicalize save path: {}", e))?;
     let file_path = std::path::Path::new(&path);

@@ -389,6 +389,7 @@ async fn api_get_download_link(
     };
 
     // Directory traversal check
+    let _ = std::fs::create_dir_all(&config.settings.save_path);
     let save_path = match std::fs::canonicalize(&config.settings.save_path) {
         Ok(p) => p,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to canonicalize save path: {}", e))),
@@ -450,6 +451,7 @@ async fn api_download_video(
     }
 
     // 3. Verify directory traversal
+    let _ = std::fs::create_dir_all(&config.settings.save_path);
     let save_path = match std::fs::canonicalize(&config.settings.save_path) {
         Ok(p) => p,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to canonicalize save path: {}", e)).into_response(),
@@ -515,6 +517,7 @@ async fn api_delete_video(
     };
 
     // Directory traversal security check
+    let _ = std::fs::create_dir_all(&config.settings.save_path);
     let save_path = match std::fs::canonicalize(&config.settings.save_path) {
         Ok(p) => p,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to canonicalize save path: {}", e))),

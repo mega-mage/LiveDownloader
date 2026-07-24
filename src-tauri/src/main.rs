@@ -51,6 +51,7 @@ fn adjust_current_dir() {
 
 fn init_logging(config_toml_path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config_dir = config_toml_path.parent().unwrap();
+    let _ = fs::create_dir_all(config_dir);
     let log_path = config_dir.join("app.log");
     if log_path.exists() && fs::metadata(&log_path)?.len() > 10 * 1024 * 1024 {
         let _ = fs::remove_file(&log_path);
