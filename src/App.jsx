@@ -377,6 +377,10 @@ function App() {
       use_proxy: useProxy === "是",
       proxy_addr: proxyAddr.trim() || null,
       delay_default: parseInt(pollInterval, 10) || 300,
+      split_mode: splitMode,
+      split_time_secs: parseInt(splitTimeSecs, 10) || 1200,
+      split_size_mb: parseInt(splitSizeMb, 10) || 1024,
+      split_video_bitrate_kbps: parseInt(splitVideoBitrateKbps, 10) || 8000,
     };
 
     const cleanCookies = {};
