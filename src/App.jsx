@@ -366,9 +366,22 @@ function App() {
   // Save config action
   const handleSaveConfig = async (e) => {
     if (e) e.preventDefault();
-    if (!config) return;
+    
+    let baseConfig = config;
+    if (!baseConfig) {
+      try {
+        baseConfig = await getConfig();
+      } catch (err) {
+        baseConfig = { settings: {}, cookies: {}, push: {}, rooms: [] };
+      }
+    }
 
-    const updatedConfig = { ...config };
+    const numVal = (v, def) => {
+      const parsed = parseInt(v, 10);
+      return isNaN(parsed) ? def : parsed;
+    };
+
+    const updatedConfig = { ...baseConfig };
     updatedConfig.settings = {
       ...updatedConfig.settings,
       save_path: savePath,
@@ -376,11 +389,11 @@ function App() {
       video_record_quality: qualityDefault,
       use_proxy: useProxy === "是",
       proxy_addr: proxyAddr.trim() || null,
-      delay_default: parseInt(pollInterval, 10) || 300,
-      split_mode: splitMode,
-      split_time_secs: parseInt(splitTimeSecs, 10) || 1200,
-      split_size_mb: parseInt(splitSizeMb, 10) || 1024,
-      split_video_bitrate_kbps: parseInt(splitVideoBitrateKbps, 10) || 8000,
+      delay_default: numVal(pollInterval, 300),
+      split_mode: splitMode || "time",
+      split_time_secs: numVal(splitTimeSecs, 1200),
+      split_size_mb: numVal(splitSizeMb, 1024),
+      split_video_bitrate_kbps: numVal(splitVideoBitrateKbps, 8000),
     };
 
     const cleanCookies = {};
@@ -486,7 +499,7 @@ function App() {
 
   // Load config data
   useEffect(() => {
-    if (activeTab !== "settings" || (isWebMode() && !getApiBaseUrl())) return;
+    if (isWebMode() && !getApiBaseUrl()) return;
 
     const loadConfig = async () => {
       try {
@@ -498,11 +511,11 @@ function App() {
           setQualityDefault(res.settings.video_record_quality || "原画");
           setUseProxy(res.settings.use_proxy ? "是" : "否");
           setProxyAddr(res.settings.proxy_addr || "");
-          setPollInterval(res.settings.delay_default ? res.settings.delay_default.toString() : "300");
+          setPollInterval(res.settings.delay_default !== undefined ? String(res.settings.delay_default) : "300");
           setSplitMode(res.settings.split_mode || "time");
-          setSplitTimeSecs(res.settings.split_time_secs ? res.settings.split_time_secs.toString() : "1200");
-          setSplitSizeMb(res.settings.split_size_mb ? res.settings.split_size_mb.toString() : "1024");
-          setSplitVideoBitrateKbps(res.settings.split_video_bitrate_kbps ? res.settings.split_video_bitrate_kbps.toString() : "8000");
+          setSplitTimeSecs(res.settings.split_time_secs !== undefined ? String(res.settings.split_time_secs) : "1200");
+          setSplitSizeMb(res.settings.split_size_mb !== undefined ? String(res.settings.split_size_mb) : "1024");
+          setSplitVideoBitrateKbps(res.settings.split_video_bitrate_kbps !== undefined ? String(res.settings.split_video_bitrate_kbps) : "8000");
         }
         if (res.cookies) {
           setCookies(res.cookies);
@@ -521,7 +534,7 @@ function App() {
       }
     };
     loadConfig();
-  }, [activeTab]);
+  }, []);
 
   // Initialize Player when activePlayUrl changes
   useEffect(() => {
