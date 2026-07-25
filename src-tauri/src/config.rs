@@ -190,6 +190,15 @@ pub fn get_config_paths() -> (PathBuf, PathBuf) {
     (config_path.clone(), config_path)
 }
 
+pub fn get_downloading_dir(config_toml_path: &Path) -> PathBuf {
+    let config_dir = config_toml_path
+        .parent()
+        .unwrap_or_else(|| Path::new("./config"));
+    let downloading_dir = config_dir.join("downloading");
+    let _ = std::fs::create_dir_all(&downloading_dir);
+    downloading_dir
+}
+
 pub fn migrate_old_config(old_ini_path: &Path, new_toml_path: &Path) {
     if old_ini_path.exists() && !new_toml_path.exists() {
         info!("Migrating old config.ini to standard config.toml...");

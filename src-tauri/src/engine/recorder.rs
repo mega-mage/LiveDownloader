@@ -109,6 +109,7 @@ impl Recorder {
         title: &str,
         stream_urls: &StreamUrls,
         config: &AppConfig,
+        config_toml_path: &std::path::Path,
         custom_format: Option<&str>,
     ) -> Result<RecordSession, Box<dyn std::error::Error + Send + Sync>> {
         // Read split config from AppConfig
@@ -129,9 +130,8 @@ impl Recorder {
 
         let (dir_path, file_path) = Self::build_paths(config, anchor_name, title, enable_split, custom_format);
 
-        // Create downloading directory
-        let downloading_dir = config.settings.save_path.join("downloading");
-        std::fs::create_dir_all(&downloading_dir)?;
+        // Create downloading directory inside config directory (e.g. ~/.config/LiveDownloader/downloading)
+        let downloading_dir = crate::config::get_downloading_dir(config_toml_path);
 
         let filename_str = file_path.file_name().ok_or("Invalid filename")?.to_str().ok_or("Invalid filename encoding")?;
         let downloading_file_path = downloading_dir.join(filename_str);

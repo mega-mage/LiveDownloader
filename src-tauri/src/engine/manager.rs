@@ -36,7 +36,7 @@ impl TaskManager {
         let config = AppConfig::load_or_create(config_path.as_ref())?;
 
         // Scan and move leftover files from downloading to download dir
-        scan_and_move_leftovers(&config.settings.save_path);
+        scan_and_move_leftovers(config_path.as_ref(), &config.settings.save_path);
 
         Ok(Self {
             config_path: config_path.as_ref().to_path_buf(),
@@ -151,6 +151,7 @@ impl TaskManager {
                 let custom_name = url_cfg.name.clone();
                 let custom_format = url_cfg.video_save_type.clone();
                 let config_cloned = self.config.clone();
+                let config_path_cloned = self.config_path.clone();
                 let pm_cloned = platform_manager.clone();
                 let rec_cloned = recorder.clone();
                 let statuses_cloned = self.room_statuses.clone();
@@ -182,6 +183,7 @@ impl TaskManager {
                         custom_name,
                         custom_format,
                         config_cloned,
+                        config_path_cloned,
                         pm_cloned,
                         rec_cloned,
                         statuses_cloned,
@@ -221,6 +223,7 @@ async fn monitor_room_loop(
     custom_name: Option<String>,
     custom_format: Option<String>,
     config: Arc<RwLock<AppConfig>>,
+    config_path: PathBuf,
     platform_manager: Arc<PlatformManager>,
     recorder: Arc<Recorder>,
     statuses: Arc<RwLock<HashMap<String, RoomStatus>>>,
@@ -322,7 +325,7 @@ async fn monitor_room_loop(
                 save_room_statuses(&statuses).await;
                 
                 // Start record session
-                match recorder.start_record(display_name, &title, &stream_urls, &app_config, custom_format.as_deref()) {
+                match recorder.start_record(display_name, &title, &stream_urls, &app_config, &config_path, custom_format.as_deref()) {
                     Ok(mut session) => {
                         info!("Recording started for [{}], output file: {:?}", display_name, session.output_file_path);
                         
@@ -641,8 +644,8 @@ fn move_session_files_to_dest(downloading_file_template: &Path, dest_dir: &Path)
     }
 }
 
-pub fn scan_and_move_leftovers(save_path: &Path) {
-    let downloading_dir = save_path.join("downloading");
+pub fn scan_and_move_leftovers(config_toml_path: &Path, save_path: &Path) {
+    let downloading_dir = crate::config::get_downloading_dir(config_toml_path);
     if !downloading_dir.exists() {
         return;
     }

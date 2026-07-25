@@ -206,12 +206,13 @@ async fn api_get_recorded_videos(state: AxumState<SharedState>) -> Result<Json<V
     let mut videos = Vec::new();
     let mut dirs_to_visit = vec![save_path.clone()];
     let allowed_exts = vec!["ts", "mp4", "mkv", "flv", "mp3", "m4a"];
+    let downloading_dir = crate::config::get_downloading_dir(&state.config_toml_path);
     while let Some(dir) = dirs_to_visit.pop() {
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    if path != save_path.join("downloading") {
+                    if path != downloading_dir {
                         dirs_to_visit.push(path);
                     }
                 } else if path.is_file() {
