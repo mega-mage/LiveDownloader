@@ -57,14 +57,15 @@ impl Recorder {
         Self
     }
 
-    /// Construct output directory and file path template according to AppConfig
+    /// Construct output directory and file path template according to AppConfig.
+    /// Returns (dir_path, file_path, effective_extension).
     pub fn build_paths(
         config: &AppConfig,
         anchor_name: &str,
         title: &str,
         split_by_time: bool,
         custom_format: Option<&str>,
-    ) -> (PathBuf, PathBuf) {
+    ) -> (PathBuf, PathBuf, String) {
         let now = Local::now();
         let time_str = now.format("%Y-%m-%d_%H-%M-%S").to_string();
         
@@ -82,15 +83,17 @@ impl Recorder {
         };
         
         // Check extension from custom_format first, fallback to video_save_type (defaults to ts)
-        let ext = custom_format.map(|s| s.to_string())
+        let raw_fmt = custom_format
+            .map(|s| s.to_string())
             .unwrap_or_else(|| config.settings.video_save_type.clone())
             .to_lowercase();
-        let ext = match ext.as_str() {
-            "ts" | "mkv" | "flv" | "mp4" | "mp3" | "m4a" => ext.as_str(),
+        let ext = match raw_fmt.as_str() {
+            "ts" | "mkv" | "flv" | "mp4" | "mp3" | "m4a" => raw_fmt.as_str(),
             "mp3音频" => "mp3",
             "m4a音频" => "m4a",
             _ => "ts",
         };
+        let ext = ext.to_string(); // own the string to outlive raw_fmt
         
         let filename = if split_by_time {
             format!("{}_%03d.{}", filename_base, ext)
@@ -99,7 +102,7 @@ impl Recorder {
         };
         
         let file_path = dir_path.join(&filename);
-        (dir_path, file_path)
+        (dir_path, file_path, ext)
     }
 
     /// Start a recording session using FFmpeg
@@ -128,7 +131,7 @@ impl Recorder {
             }
         };
 
-        let (dir_path, file_path) = Self::build_paths(config, anchor_name, title, enable_split, custom_format);
+        let (dir_path, file_path, effective_ext) = Self::build_paths(config, anchor_name, title, enable_split, custom_format);
 
         // Create downloading directory inside config directory (e.g. ~/.config/LiveDownloader/downloading)
         let downloading_dir = crate::config::get_downloading_dir(config_toml_path);
@@ -210,14 +213,8 @@ impl Recorder {
         args.push("-avoid_negative_ts".to_string());
         args.push("1".to_string());
         
-        // Output format settings
-        let ext = config.settings.video_save_type.to_lowercase();
-        let ext = match ext.as_str() {
-            "ts" | "mkv" | "flv" | "mp4" | "mp3" | "m4a" => ext.as_str(),
-            "mp3音频" => "mp3",
-            "m4a音频" => "m4a",
-            _ => "ts",
-        };
+        // Output format: use effective_ext resolved by build_paths (respects custom_format)
+        let ext = effective_ext.as_str();
         
         match ext {
             "mp3" => {
