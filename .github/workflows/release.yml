@@ -4,9 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - master
-      - main
   workflow_dispatch:
 
 permissions:
@@ -51,7 +48,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y musl-tools
           if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cargo install cross --git https://github.com/cross-rs/cross
+            cargo install cross --git https://github.com/cross-rs/cross || cargo install cross
           fi
 
       - name: Build Server Binary (x86_64 musl)
@@ -106,6 +103,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Determine Release Tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+            echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
@@ -132,7 +140,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
+          tagName: ${{ steps.release_tag.outputs.tag }}
           releaseName: 'LiveDownloader v__VERSION__'
           releaseBody: 'See the assets below to download LiveDownloader Desktop App or Server Binary for your platform.'
           releaseDraft: false
@@ -147,6 +155,20 @@ jobs:
     needs: [build-server, build-desktop]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Release Tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+            echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Download all server artifacts
         uses: actions/download-artifact@v4
         with:
@@ -160,7 +182,7 @@ jobs:
       - name: Upload Server Binaries to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.release_tag.outputs.tag }}
           files: server-binaries/livedownloader-server-linux-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
