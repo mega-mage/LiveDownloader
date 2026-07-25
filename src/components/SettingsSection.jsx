@@ -44,8 +44,6 @@ export function SettingsSection({
   setRemoteApiToken,
   savePath,
   setSavePath,
-  saveFormat,
-  setSaveFormat,
   pollInterval,
   setPollInterval,
   useProxy,
@@ -174,17 +172,6 @@ export function SettingsSection({
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-foreground/80">{t("save_format", lang)}</label>
-                <Select value={saveFormat} onChange={(e) => setSaveFormat(e.target.value)}>
-                  <option value="ts">{lang === "zh" ? "MPEG-TS (.ts) - 最稳定" : "MPEG-TS (.ts) - Recommended"}</option>
-                  <option value="mp4">MP4 (.mp4)</option>
-                  <option value="flv">FLV (.flv)</option>
-                  <option value="mkv">Matroska (.mkv)</option>
-                  <option value="mp3">{lang === "zh" ? "MP3 音频 (.mp3)" : "MP3 Audio (.mp3)"}</option>
-                  <option value="m4a">{lang === "zh" ? "M4A 音频 (.m4a)" : "M4A Audio (.m4a)"}</option>
-                </Select>
-              </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-foreground/80">{t("poll_interval", lang)}</label>
                 <Input

@@ -267,7 +267,6 @@ function App() {
 
   // Config form states
   const [savePath, setSavePath] = useState("");
-  const [saveFormat, setSaveFormat] = useState("ts");
   const [qualityDefault, setQualityDefault] = useState("原画");
   const [useProxy, setUseProxy] = useState("否");
   const [proxyAddr, setProxyAddr] = useState("");
@@ -385,7 +384,7 @@ function App() {
     updatedConfig.settings = {
       ...updatedConfig.settings,
       save_path: savePath,
-      video_save_type: saveFormat,
+      video_save_type: "ts",
       video_record_quality: qualityDefault,
       use_proxy: useProxy === "是",
       proxy_addr: proxyAddr.trim() || null,
@@ -507,7 +506,6 @@ function App() {
         setConfig(res);
         if (res.settings) {
           setSavePath(res.settings.save_path || "");
-          setSaveFormat(res.settings.video_save_type || "ts");
           setQualityDefault(res.settings.video_record_quality || "原画");
           setUseProxy(res.settings.use_proxy ? "是" : "否");
           setProxyAddr(res.settings.proxy_addr || "");
@@ -884,8 +882,6 @@ function App() {
               setRemoteApiToken={setRemoteApiToken}
               savePath={savePath}
               setSavePath={setSavePath}
-              saveFormat={saveFormat}
-              setSaveFormat={setSaveFormat}
               pollInterval={pollInterval}
               setPollInterval={setPollInterval}
               useProxy={useProxy}
@@ -958,7 +954,6 @@ function App() {
         getRooms={getRooms}
         setConfig={setConfig}
         qualityDefault={qualityDefault}
-        saveFormat={saveFormat}
         showAlert={showAlert}
         lang={lang}
       />
