@@ -429,9 +429,8 @@ async fn monitor_room_loop(
                         // Stop the segment monitoring loop and wait for final uploads/moves
                         let _ = poll_stop_tx.send(true);
                         let _ = segment_handle.await;
-
-                        // Move files from downloading directory to final target directory
-                        move_session_files_to_dest(&session.output_file_path, &session.target_dir_path);
+                        // Note: segment_handle's final check already moves all remaining files
+                        // from downloading dir to target dir, so no additional move needed.
                         
                         // Send offline notification
                         let push_title = format!("{} 直播已录制结束/停止", display_name);
@@ -589,60 +588,7 @@ fn find_completed_segments(
     completed
 }
 
-fn find_session_files(downloading_dir: &Path, file_path_template: &Path) -> Vec<PathBuf> {
-    let mut matched = Vec::new();
-    let template_name = match file_path_template.file_name().and_then(|s| s.to_str()) {
-        Some(n) => n,
-        None => return matched,
-    };
 
-    if template_name.contains("%03d") {
-        let parts: Vec<&str> = template_name.split("%03d").collect();
-        if parts.len() == 2 {
-            let prefix = parts[0];
-            let suffix = parts[1];
-            if let Ok(entries) = std::fs::read_dir(downloading_dir) {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.file_name().to_str() {
-                        if name.starts_with(prefix) && name.ends_with(suffix) {
-                            matched.push(entry.path());
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        let path = downloading_dir.join(template_name);
-        if path.exists() {
-            matched.push(path);
-        }
-    }
-    matched
-}
-
-fn move_session_files_to_dest(downloading_file_template: &Path, dest_dir: &Path) {
-    let downloading_dir = match downloading_file_template.parent() {
-        Some(p) => p,
-        None => return,
-    };
-    let matched_files = find_session_files(downloading_dir, downloading_file_template);
-
-    if !matched_files.is_empty() {
-        let _ = std::fs::create_dir_all(dest_dir);
-        for src in matched_files {
-            if let Some(filename) = src.file_name() {
-                let dest = dest_dir.join(filename);
-                info!("Finalizing download: Moving file from downloading to final dir: {:?}", dest);
-                if let Err(e) = std::fs::rename(&src, &dest) {
-                    debug!("Rename failed, falling back to copy/remove: {}", e);
-                    if let Err(err) = std::fs::copy(&src, &dest).and_then(|_| std::fs::remove_file(&src)) {
-                        error!("Failed to move finalized file {:?} to {:?}: {}", src, dest, err);
-                    }
-                }
-            }
-        }
-    }
-}
 
 pub fn scan_and_move_leftovers(config_toml_path: &Path, save_path: &Path) {
     let downloading_dir = crate::config::get_downloading_dir(config_toml_path);
