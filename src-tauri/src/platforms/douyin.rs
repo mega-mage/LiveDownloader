@@ -269,7 +269,7 @@ fn parse_douyin_room_data(
         }
     }
 
-    let record_url = m3u8_url.clone().or_else(|| flv_url.clone())
+    let record_url = flv_url.clone().or_else(|| m3u8_url.clone())
         .ok_or("No recordable stream URL found")?;
 
     let mut custom_headers = HashMap::new();

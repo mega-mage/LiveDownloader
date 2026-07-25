@@ -241,12 +241,12 @@ export function SettingsSection({
                       placeholder="1024"
                     />
                     <p className="text-xxs text-muted-foreground">
-                      {lang === "zh" ? "例如 1024 表示每 1GB 自动生成新切片" : "Example: 1024 = 1GB per segment"}
+                      {lang === "zh" ? "例如 1024 表示生成约 1GB/段 的独立视频切片" : "Example: 1024 = ~1GB per video segment"}
                     </p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-foreground/80">
-                      {lang === "zh" ? "估算画质码率 (kbps)" : "Estimated Bitrate (kbps)"}
+                      {lang === "zh" ? "保底参考码率 (kbps) [自动探测已激活]" : "Fallback Bitrate (kbps) [Auto-Probe Active]"}
                     </label>
                     <Input
                       type="number"
@@ -254,8 +254,10 @@ export function SettingsSection({
                       onChange={(e) => setSplitVideoBitrateKbps(e.target.value)}
                       placeholder="8000"
                     />
-                    <p className="text-xxs text-muted-foreground">
-                      {lang === "zh" ? "原画约 8000~12000, 高清约 4000~6000 kbps" : "Original ~8000, HD ~4000 kbps"}
+                    <p className="text-xxs text-emerald-600 dark:text-emerald-400 font-medium">
+                      {lang === "zh" 
+                        ? "✨ 系统会自动实时探测每个直播间（不同画质/不同主播）的真实码率精确控制切片大小。无法探测时才使用此保底码率。" 
+                        : "✨ System automatically probes the real-time bitrate for each room to calculate segment duration. Fallback only used if probing fails."}
                     </p>
                   </div>
                 </>
