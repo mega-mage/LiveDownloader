@@ -257,9 +257,22 @@ pub async fn get_engine_status(state: State<'_, AppState>) -> Result<bool, Strin
 #[tauri::command]
 pub async fn get_recorded_videos(state: State<'_, AppState>) -> Result<Vec<RecordedVideo>, String> {
     let config = AppConfig::load_or_create(&state.config_toml_path).map_err(|e| e.to_string())?;
-    let save_path = config.settings.save_path;
+    let mut save_path = config.settings.save_path;
     if !save_path.exists() {
-        return Ok(Vec::new());
+        if save_path.is_relative() {
+            if let Some(config_dir) = state.config_toml_path.parent() {
+                let candidate = config_dir.join(&save_path);
+                if candidate.exists() {
+                    save_path = candidate;
+                } else {
+                    let _ = std::fs::create_dir_all(&save_path);
+                }
+            } else {
+                let _ = std::fs::create_dir_all(&save_path);
+            }
+        } else {
+            let _ = std::fs::create_dir_all(&save_path);
+        }
     }
 
     let mut videos = Vec::new();
@@ -267,13 +280,41 @@ pub async fn get_recorded_videos(state: State<'_, AppState>) -> Result<Vec<Recor
     let allowed_exts = vec!["ts", "mp4", "mkv", "flv", "mp3", "m4a"];
 
     let downloading_dir = crate::config::get_downloading_dir(&state.config_toml_path);
+    let old_downloading = save_path.join("downloading");
+
+    let is_download_dir = |p: &std::path::Path| -> bool {
+        if p == downloading_dir || p == old_downloading {
+            return true;
+        }
+        if let (Ok(c1), Ok(c2)) = (std::fs::canonicalize(p), std::fs::canonicalize(&downloading_dir)) {
+            if c1 == c2 {
+                return true;
+            }
+        }
+        if let (Ok(c1), Ok(c2)) = (std::fs::canonicalize(p), std::fs::canonicalize(&old_downloading)) {
+            if c1 == c2 {
+                return true;
+            }
+        }
+        false
+    };
+
+    let is_same_dir = |p1: &std::path::Path, p2: &std::path::Path| -> bool {
+        if p1 == p2 {
+            return true;
+        }
+        if let (Ok(c1), Ok(c2)) = (std::fs::canonicalize(p1), std::fs::canonicalize(p2)) {
+            return c1 == c2;
+        }
+        false
+    };
 
     while let Some(dir) = dirs_to_visit.pop() {
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    if path != downloading_dir {
+                    if !is_download_dir(&path) {
                         dirs_to_visit.push(path);
                     }
                 } else if path.is_file() {
@@ -295,7 +336,7 @@ pub async fn get_recorded_videos(state: State<'_, AppState>) -> Result<Vec<Recor
                                 .unwrap_or_default();
 
                             let anchor = if let Some(parent) = path.parent() {
-                                if parent != save_path {
+                                if !is_same_dir(parent, &save_path) {
                                     parent
                                         .file_name()
                                         .and_then(|s| s.to_str())
