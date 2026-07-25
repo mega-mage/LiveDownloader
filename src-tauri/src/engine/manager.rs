@@ -348,12 +348,18 @@ async fn monitor_room_loop(
                         
                         let segment_handle = tokio::spawn(async move {
                             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+                            let mut processed_files: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
                             
                             loop {
                                 tokio::select! {
                                     _ = interval.tick() => {
                                         let completed = find_completed_segments(&output_template, true);
                                         for file_path in completed {
+                                            if processed_files.contains(&file_path) {
+                                                continue;
+                                            }
+                                            processed_files.insert(file_path.clone());
+
                                             if app_config_cloned.push.tg_auto_upload {
                                                 let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                                                 let caption = format!("【自动上传切片】\n主播: {}\n文件: {}", display_name_str, file_name);
@@ -385,6 +391,11 @@ async fn monitor_room_loop(
                             // One final check after FFmpeg exits
                             let completed = find_completed_segments(&output_template, false);
                             for file_path in completed {
+                                if processed_files.contains(&file_path) {
+                                    continue;
+                                }
+                                processed_files.insert(file_path.clone());
+
                                 if app_config_cloned.push.tg_auto_upload {
                                     let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                                     let caption = format!("【自动上传切片】\n主播: {}\n文件: {}", display_name_str, file_name);
