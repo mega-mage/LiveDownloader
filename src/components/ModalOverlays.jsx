@@ -35,7 +35,6 @@ export function ModalOverlays({
   getRooms,
   setConfig,
   qualityDefault,
-  saveFormat,
   showAlert,
   lang
 }) {
@@ -254,7 +253,7 @@ export function ModalOverlays({
                   value={roomConfigModal.videoSaveType}
                   onChange={(e) => setRoomConfigModal(prev => ({ ...prev, videoSaveType: e.target.value }))}
                 >
-                  <option value="">{lang === "zh" ? `跟随全局配置 (${saveFormat})` : `Follow Global (${saveFormat})`}</option>
+                  <option value="">{lang === "zh" ? `默认格式 (ts)` : `Default (ts)`}</option>
                   <option value="ts">MPEG-TS (.ts)</option>
                   <option value="mp4">MP4 (.mp4)</option>
                   <option value="mkv">Matroska (.mkv)</option>
