@@ -82,6 +82,7 @@ jobs:
   # ============================================================================
   # 2. Desktop GUI Build Job (Tauri: creates the GitHub Release)
   # ============================================================================
+  
   build-desktop:
     name: Desktop GUI (${{ matrix.platform }})
     needs: build-server
