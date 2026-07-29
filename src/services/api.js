@@ -208,18 +208,13 @@ export function getStreamProxyUrl(liveUrl, referer, proxyPort) {
   if (isTauri()) {
     return `http://127.0.0.1:${proxyPort}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}`;
   }
-  // Web mode: route through the remote backend's proxy
+  // Web mode: route through the main backend's /proxy endpoint
   const base = getApiBaseUrl();
   if (!base) return liveUrl;
 
   const token = getApiToken();
   const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
 
-  // If base starts with https:// (e.g. HTTPS domain or reverse proxy), route through base + /proxy
-  if (base.startsWith("https://")) {
-    return `${base}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}${tokenParam}`;
-  }
-
-  // Extract the host:port from the base URL and use the proxy port from the API
-  return `${base.replace(/:\d+$/, "")}:${proxyPort}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}${tokenParam}`;
+  const cleanBase = base.replace(/\/+$/, "");
+  return `${cleanBase}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}${tokenParam}`;
 }
