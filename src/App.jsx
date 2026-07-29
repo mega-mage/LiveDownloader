@@ -32,7 +32,8 @@ import {
   X,
   GripHorizontal,
   PlayCircle,
-  PauseCircle
+  PauseCircle,
+  Globe
 } from "lucide-react";
 
 import "./App.css";
@@ -807,6 +808,15 @@ function App() {
               <span className="text-muted-foreground font-medium ml-1">{t("monitored_rooms", lang)}</span>
               <span className="font-bold text-foreground ml-1.5">{rooms.length}</span>
             </div>
+
+            <button 
+              onClick={toggleLanguage}
+              className="h-9 px-3 rounded-lg border border-border/80 bg-secondary/55 hover:bg-secondary flex items-center gap-1.5 text-xs font-bold text-foreground transition-all cursor-pointer shrink-0"
+              title={lang === "zh" ? "Switch to English" : "切换为中文"}
+            >
+              <Globe size={14} className="text-muted-foreground" />
+              <span>{lang === "zh" ? "EN" : "中文"}</span>
+            </button>
           </div>
         </header>
 

@@ -13,7 +13,8 @@ import {
   X, 
   Radio, 
   Server,
-  MonitorCheck
+  MonitorCheck,
+  Globe
 } from "lucide-react";
 
 const getNavItems = (lang) => [
@@ -39,23 +40,35 @@ export function Sidebar({ activeTab, onChangeTab, currentTheme, onChangeTheme, o
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-card text-card-foreground">
       {/* Brand Logo & Header */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-border">
-        <div className="relative flex items-center justify-center h-10 w-10 rounded-xl bg-primary shadow-lg shadow-primary/20">
-          <Radio className="text-white animate-pulse" size={20} />
-          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-            <span className={cn(
-              "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-              isEnginePaused ? "bg-amber-400" : "bg-emerald-400"
-            )}></span>
-            <span className={cn(
-              "relative inline-flex rounded-full h-3 w-3",
-              isEnginePaused ? "bg-amber-500" : "bg-emerald-500"
-            )}></span>
-          </span>
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center gap-3">
+          <div className="relative flex items-center justify-center h-9 w-9 rounded-xl bg-primary shadow-lg shadow-primary/20">
+            <Radio className="text-white animate-pulse" size={18} />
+            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+              <span className={cn(
+                "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                isEnginePaused ? "bg-amber-400" : "bg-emerald-400"
+              )}></span>
+              <span className={cn(
+                "relative inline-flex rounded-full h-2.5 w-2.5",
+                isEnginePaused ? "bg-amber-500" : "bg-emerald-500"
+              )}></span>
+            </span>
+          </div>
+          <div className="flex flex-col">
+            <h1 className="font-bold text-sm leading-none tracking-tight">LiveDownloader</h1>
+          </div>
         </div>
-        <div className="flex flex-col">
-          <h1 className="font-bold text-base leading-none tracking-tight">LiveDownloader</h1>
-        </div>
+
+        {/* Desktop Language Switcher */}
+        <button 
+          onClick={toggleLanguage}
+          className="h-7 px-2 rounded-md border border-border/80 bg-secondary/50 hover:bg-secondary flex items-center gap-1 text-xs font-bold text-foreground cursor-pointer transition-all shrink-0"
+          title={lang === "zh" ? "Switch to English" : "切换为中文"}
+        >
+          <Globe size={13} className="text-muted-foreground" />
+          <span>{lang === "zh" ? "EN" : "中"}</span>
+        </button>
       </div>
 
       {/* Connection Status Indicator */}
