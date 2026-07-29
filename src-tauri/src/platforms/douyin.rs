@@ -293,6 +293,17 @@ fn parse_douyin_room_data(
         }
     }
 
+    // If m3u8_url is missing, convert flv_url to m3u8_url for Web live player
+    if m3u8_url.is_none() {
+        if let Some(ref flv) = flv_url {
+            let converted = flv
+                .replace("pull-flv-", "pull-hls-")
+                .replace(".flv?", ".m3u8?")
+                .replace(".flv", ".m3u8");
+            m3u8_url = Some(converted);
+        }
+    }
+
     let record_url = flv_url.clone().or_else(|| m3u8_url.clone())
         .ok_or("No recordable stream URL found")?;
 

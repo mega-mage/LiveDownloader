@@ -579,11 +579,122 @@ fn bind_listener(port: u16) -> Result<std::net::TcpListener, Box<dyn std::error:
     Ok(socket.into())
 }
 
+#[derive(serde::Deserialize)]
+pub struct ProxyQuery {
+    pub url: String,
+    pub referer: Option<String>,
+}
+
+async fn api_proxy(
+    axum::extract::Query(query): axum::extract::Query<ProxyQuery>,
+) -> impl IntoResponse {
+    let target_url = query.url;
+    let custom_referer = query.referer;
+
+    let referer = if let Some(ref r) = custom_referer {
+        r.clone()
+    } else if target_url.contains("bilivideo") || target_url.contains("bilibili") {
+        "https://live.bilibili.com/".to_string()
+    } else if target_url.contains("douyin") || target_url.contains("douyincdn") || target_url.contains("bytecdn") || target_url.contains("amemv") || target_url.contains("iesdouyin") || target_url.contains("pstatp") {
+        "https://live.douyin.com/".to_string()
+    } else {
+        "".to_string()
+    };
+
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap_or_default();
+
+    let mut req = client.get(&target_url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+
+    if !referer.is_empty() {
+        req = req.header("Referer", referer);
+    }
+
+    match req.send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            let content_type = resp.headers()
+                .get("content-type")
+                .map(|v| v.to_str().unwrap_or("application/octet-stream"))
+                .unwrap_or("application/octet-stream")
+                .to_string();
+
+            let is_m3u8 = content_type.contains("mpegurl") 
+                || content_type.contains("m3u8") 
+                || target_url.ends_with(".m3u8") 
+                || target_url.contains(".m3u8?");
+
+            if is_m3u8 {
+                let body = resp.text().await.unwrap_or_default();
+                let base_parsed = url::Url::parse(&target_url).ok();
+                let base_fallback = if let Some(pos) = target_url.rfind('/') {
+                    &target_url[..pos + 1]
+                } else {
+                    &target_url
+                };
+
+                let mut result = String::new();
+                for line in body.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() || trimmed.starts_with('#') {
+                        result.push_str(trimmed);
+                    } else {
+                        let full_url = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+                            trimmed.to_string()
+                        } else if let Some(ref base_u) = base_parsed {
+                            base_u.join(trimmed).map(|u| u.to_string()).unwrap_or_else(|_| format!("{}{}", base_fallback, trimmed))
+                        } else {
+                            format!("{}{}", base_fallback, trimmed)
+                        };
+                        let encoded = urlencoding::encode(&full_url);
+                        let mut proxy_path = format!("/proxy?url={}", encoded);
+                        if let Some(ref ref_val) = custom_referer {
+                            proxy_path.push_str(&format!("&referer={}", urlencoding::encode(ref_val)));
+                        }
+                        result.push_str(&proxy_path);
+                    }
+                    result.push('\n');
+                }
+
+                (
+                    status,
+                    [
+                        ("Content-Type", "application/vnd.apple.mpegurl"),
+                        ("Access-Control-Allow-Origin", "*"),
+                        ("Access-Control-Allow-Headers", "*"),
+                    ],
+                    axum::body::Body::from(result),
+                ).into_response()
+            } else {
+                let stream = resp.bytes_stream();
+                (
+                    status,
+                    [
+                        ("Content-Type", content_type.as_str()),
+                        ("Access-Control-Allow-Origin", "*"),
+                        ("Access-Control-Allow-Headers", "*"),
+                    ],
+                    axum::body::Body::from_stream(stream),
+                ).into_response()
+            }
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            [("Content-Type", "application/json")],
+            axum::body::Body::from(format!("{{\"error\": \"{}\"}}", e)),
+        ).into_response(),
+    }
+}
+
 pub async fn start_server(state: Arc<AppState>, port: u16) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cors = CorsLayer::permissive();
 
     let app = Router::new()
         .route("/api/video/download", get(api_download_video))
+        .route("/proxy", get(api_proxy))
         .merge(Router::new()
             .route("/api/rooms", get(api_get_rooms))
             .route("/api/room", post(api_add_room))
