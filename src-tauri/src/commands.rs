@@ -298,6 +298,24 @@ pub async fn toggle_engine_status(paused: bool, state: State<'_, AppState>) -> R
     state
         .is_paused
         .store(paused, std::sync::atomic::Ordering::SeqCst);
+
+    {
+        let mut map = state.room_statuses.write().await;
+        if paused {
+            for status in map.values_mut() {
+                status.status = "Paused".to_string();
+                status.live_url = None;
+                status.record_path = None;
+            }
+        } else {
+            for status in map.values_mut() {
+                if status.status == "Paused" {
+                    status.status = "Idle".to_string();
+                }
+            }
+        }
+    }
+
     state.change_notify.notify_one();
     Ok(())
 }

@@ -169,7 +169,7 @@ impl TaskManager {
                 let rec_cloned = recorder.clone();
                 let statuses_cloned = self.room_statuses.clone();
                 
-                // Insert initial state for this new room
+                // Update/insert initial state for this room
                 {
                     let mut map = self.room_statuses.write().await;
                     let handler_name = pm_cloned.find_handler(&url)
@@ -177,21 +177,31 @@ impl TaskManager {
                     
                     let paused = self.is_paused.load(std::sync::atomic::Ordering::SeqCst);
                     let initial_status = if paused { "Paused" } else { "Idle" };
-                    
-                    let existing_auto_dur = map.get(&url).and_then(|st| st.current_auto_duration_secs);
 
-                    map.insert(url.clone(), RoomStatus {
-                        url: url.clone(),
-                        title: "".to_string(),
-                        anchor_name: custom_name.clone().unwrap_or_else(|| "Unknown".to_string()),
-                        status: initial_status.to_string(),
-                        record_path: None,
-                        live_url: None,
-                        platform: handler_name.to_string(),
-                        split_mode: url_cfg.split_mode.clone(),
-                        split_custom_secs: url_cfg.split_custom_secs,
-                        current_auto_duration_secs: existing_auto_dur,
-                    });
+                    if let Some(existing) = map.get_mut(&url) {
+                        if existing.status == "Paused" && !paused {
+                            existing.status = "Idle".to_string();
+                        }
+                        if existing.anchor_name.is_empty() || existing.anchor_name == "Unknown" || existing.anchor_name == "未知主播" {
+                            existing.anchor_name = custom_name.clone().unwrap_or_else(|| "未知主播".to_string());
+                        }
+                        if existing.platform.is_empty() || existing.platform == "Unknown" {
+                            existing.platform = handler_name.to_string();
+                        }
+                    } else {
+                        map.insert(url.clone(), RoomStatus {
+                            url: url.clone(),
+                            title: "".to_string(),
+                            anchor_name: custom_name.clone().unwrap_or_else(|| "未知主播".to_string()),
+                            status: initial_status.to_string(),
+                            record_path: None,
+                            live_url: None,
+                            platform: handler_name.to_string(),
+                            split_mode: url_cfg.split_mode.clone(),
+                            split_custom_secs: url_cfg.split_custom_secs,
+                            current_auto_duration_secs: None,
+                        });
+                    }
                 }
                 
                 tokio::spawn(async move {

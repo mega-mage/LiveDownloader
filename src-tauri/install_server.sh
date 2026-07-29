@@ -403,6 +403,7 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=${WORK_DIR}
+Environment="HOME=${WORK_DIR}"
 ExecStart=${DEST_BIN} --server --port ${PORT}
 Restart=on-failure
 RestartSec=5s

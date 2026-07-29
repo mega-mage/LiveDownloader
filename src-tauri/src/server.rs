@@ -252,6 +252,24 @@ async fn api_toggle_engine(
     Json(body): Json<ToggleEngineRequest>,
 ) -> impl IntoResponse {
     state.is_paused.store(body.paused, std::sync::atomic::Ordering::SeqCst);
+
+    {
+        let mut map = state.room_statuses.write().await;
+        if body.paused {
+            for status in map.values_mut() {
+                status.status = "Paused".to_string();
+                status.live_url = None;
+                status.record_path = None;
+            }
+        } else {
+            for status in map.values_mut() {
+                if status.status == "Paused" {
+                    status.status = "Idle".to_string();
+                }
+            }
+        }
+    }
+
     state.change_notify.notify_one();
     Json(serde_json::json!({ "ok": true }))
 }
