@@ -165,6 +165,8 @@ jobs:
     name: Attach Server Binaries to Release
     needs: [build-server, build-desktop]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -191,9 +193,9 @@ jobs:
         run: ls -la server-binaries/
 
       - name: Upload Server Binaries to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release_tag.outputs.tag }}
-          files: server-binaries/livedownloader-server-linux-*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release_tag.outputs.tag }}"
+          echo "Attaching server binaries to release tag: ${TAG}"
+          gh release upload "${TAG}" server-binaries/livedownloader-server-linux-* --clobber
