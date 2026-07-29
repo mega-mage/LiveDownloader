@@ -324,6 +324,66 @@ do_install() {
     mkdir -p "$WORK_DIR"
     echo "$PORT" > "$PORT_FILE"
 
+    # Termux 环境特殊配置：自动探测并配置手机公共下载目录
+    if is_termux; then
+        log_info "检测到当前处于 Termux 环境，正在检查存储访问权限..."
+        if [ ! -d "/sdcard/Download" ] && [ ! -d "${HOME}/storage/downloads" ]; then
+            log_warn "未检测到手机存储读写权限，尝试申请存储权限 (termux-setup-storage)..."
+            if command -v termux-setup-storage &> /dev/null; then
+                termux-setup-storage || true
+                sleep 2
+            fi
+        fi
+
+        TERMUX_SAVE_PATH="/sdcard/Download"
+        if [ -d "/sdcard/Download" ]; then
+            TERMUX_SAVE_PATH="/sdcard/Download"
+        elif [ -d "${HOME}/storage/downloads" ]; then
+            TERMUX_SAVE_PATH="${HOME}/storage/downloads"
+        fi
+        log_success "Termux 模式默认保存目录设定为手机公共下载文件夹: ${TERMUX_SAVE_PATH}"
+    fi
+
+    # 自动生成/优化 config.toml
+    CONFIG_FILE="${WORK_DIR}/config.toml"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        log_info "生成初始配置文件 ${CONFIG_FILE}..."
+        default_sp="./downloads"
+        if is_termux && [ -n "${TERMUX_SAVE_PATH:-}" ]; then
+            default_sp="${TERMUX_SAVE_PATH}"
+        fi
+        mkdir -p "$default_sp" 2>/dev/null || true
+        cat <<EOF > "$CONFIG_FILE"
+[settings]
+language = "zh_cn"
+save_path = "${default_sp}"
+folder_by_author = false
+folder_by_time = false
+folder_by_title = false
+filename_by_title = false
+video_save_type = "ts"
+video_record_quality = "原画"
+use_proxy = false
+delay_default = 300
+split_mode = "time"
+split_time_secs = 1200
+split_size_mb = 1024
+split_video_bitrate_kbps = 8000
+
+[cookies]
+
+[push]
+tg_auto_upload = false
+
+[[rooms]]
+EOF
+    elif is_termux && [ -n "${TERMUX_SAVE_PATH:-}" ]; then
+        if grep -q 'save_path = "\./downloads"' "$CONFIG_FILE" 2>/dev/null; then
+            log_info "自动升级配置：将保存路径调整为手机公共下载夹 (${TERMUX_SAVE_PATH})..."
+            sed -i "s|save_path = \".*\"|save_path = \"${TERMUX_SAVE_PATH}\"|" "$CONFIG_FILE" || true
+        fi
+    fi
+
     install -m 755 "$FOUND_BIN" "$DEST_BIN"
     ln -sf "$DEST_BIN" "$DEST_ALIAS"
 

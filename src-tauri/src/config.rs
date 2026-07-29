@@ -8,6 +8,18 @@ fn default_language() -> String {
     "zh_cn".to_string()
 }
 fn default_save_path() -> PathBuf {
+    if std::path::Path::new("/data/data/com.termux").exists() || std::env::var("TERMUX_VERSION").is_ok() {
+        if std::path::Path::new("/sdcard/Download").exists() {
+            return PathBuf::from("/sdcard/Download");
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            let termux_dl = PathBuf::from(&home).join("storage/downloads");
+            if termux_dl.exists() {
+                return termux_dl;
+            }
+        }
+        return PathBuf::from("/sdcard/Download");
+    }
     PathBuf::from("./downloads")
 }
 fn default_false() -> bool {
