@@ -41,7 +41,9 @@ pub fn create_http_client(
     let mut builder = Client::builder()
         .user_agent(DEFAULT_USER_AGENT)
         .timeout(Duration::from_secs(timeout_secs))
-        .danger_accept_invalid_certs(true);
+        .danger_accept_invalid_certs(true)
+        .http1_ignore_invalid_headers_in_responses(true)
+        .http1_allow_obsolete_multiline_headers_in_responses(true);
 
     #[cfg(target_os = "windows")]
     let effective_proxy = {

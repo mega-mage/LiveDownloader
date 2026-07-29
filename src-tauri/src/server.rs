@@ -638,6 +638,8 @@ async fn api_proxy(
         .tcp_keepalive(std::time::Duration::from_secs(30))
         .pool_max_idle_per_host(10)
         .timeout(std::time::Duration::from_secs(15))
+        .http1_ignore_invalid_headers_in_responses(true)
+        .http1_allow_obsolete_multiline_headers_in_responses(true)
         .build()
         .unwrap_or_default();
 
