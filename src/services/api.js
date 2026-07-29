@@ -217,12 +217,6 @@ export function getStreamProxyUrl(liveUrl, referer, proxyPort) {
     return `${base}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}`;
   }
 
-  // If current page is HTTPS but base URL is HTTP, upgrade base to https:// to avoid Mixed Content
-  if (typeof window !== "undefined" && window.location.protocol === "https:" && base.startsWith("http://")) {
-    const httpsBase = base.replace(/^http:\/\//, "https://");
-    return `${httpsBase}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}`;
-  }
-
   // Extract the host:port from the base URL and use the proxy port from the API
   return `${base.replace(/:\d+$/, "")}:${proxyPort}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}`;
 }

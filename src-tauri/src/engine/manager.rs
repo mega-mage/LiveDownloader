@@ -342,7 +342,14 @@ async fn monitor_room_loop(
                         anchor_name: display_name.to_string(),
                         status: "Living".to_string(),
                         record_path: Some(format!("./downloads/{}/...", display_name)),
-                        live_url: stream_urls.m3u8_url.clone().or_else(|| Some(stream_urls.record_url.clone())),
+                        live_url: stream_urls.m3u8_url.clone().or_else(|| {
+                            let rec = stream_urls.record_url.clone();
+                            if rec.contains(".flv") {
+                                Some(rec.replace("pull-flv-", "pull-hls-").replace(".flv?", ".m3u8?").replace(".flv", ".m3u8"))
+                            } else {
+                                Some(rec)
+                            }
+                        }),
                         platform: handler.name().to_string(),
                         split_mode: room_split_mode.clone(),
                         split_custom_secs: room_split_custom_secs,
@@ -611,7 +618,17 @@ fn load_room_statuses_from_file(config_path: &Path) -> HashMap<String, RoomStatu
         let status_path = parent.join("statuses.json");
         if status_path.exists() {
             if let Ok(content) = fs::read_to_string(&status_path) {
-                if let Ok(map) = serde_json::from_str::<HashMap<String, RoomStatus>>(&content) {
+                if let Ok(mut map) = serde_json::from_str::<HashMap<String, RoomStatus>>(&content) {
+                    for status in map.values_mut() {
+                        if let Some(ref mut live_u) = status.live_url {
+                            if live_u.contains("pull-flv-") || live_u.contains(".flv") {
+                                *live_u = live_u
+                                    .replace("pull-flv-", "pull-hls-")
+                                    .replace(".flv?", ".m3u8?")
+                                    .replace(".flv", ".m3u8");
+                            }
+                        }
+                    }
                     return map;
                 }
             }
