@@ -69,10 +69,7 @@ impl TaskManager {
             let paused = self.is_paused.load(std::sync::atomic::Ordering::SeqCst);
             if paused {
                 was_paused = true;
-                if !self.active_tasks.is_empty() {
-                    info!("Engine is paused. Stopping all active monitoring tasks...");
-                    self.stop_all_tasks().await;
-                }
+                self.stop_all_tasks().await;
                 
                 // Wait for changes or sleep 1s
                 tokio::select! {
@@ -628,6 +625,11 @@ fn load_room_statuses_from_file(config_path: &Path) -> HashMap<String, RoomStatu
             if let Ok(content) = fs::read_to_string(&status_path) {
                 if let Ok(mut map) = serde_json::from_str::<HashMap<String, RoomStatus>>(&content) {
                     for status in map.values_mut() {
+                        if status.status == "Living" {
+                            status.status = "Idle".to_string();
+                            status.live_url = None;
+                            status.record_path = None;
+                        }
                         if let Some(ref mut live_u) = status.live_url {
                             if live_u.contains("pull-flv-") || live_u.contains(".flv") {
                                 *live_u = live_u
