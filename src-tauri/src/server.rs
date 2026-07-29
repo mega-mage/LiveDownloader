@@ -611,8 +611,16 @@ pub struct ProxyQuery {
 async fn api_proxy(
     axum::extract::Query(query): axum::extract::Query<ProxyQuery>,
 ) -> impl IntoResponse {
-    let target_url = query.url;
+    let mut target_url = query.url;
     let custom_referer = query.referer;
+
+    if target_url.starts_with("http://") && (
+        target_url.contains("douyincdn") || target_url.contains("bytecdn") ||
+        target_url.contains("amemv") || target_url.contains("iesdouyin") ||
+        target_url.contains("pstatp") || target_url.contains("bilivideo")
+    ) {
+        target_url = target_url.replace("http://", "https://");
+    }
 
     let referer = if let Some(ref r) = custom_referer {
         r.clone()

@@ -206,13 +206,18 @@ fn decode_html_entities(s: &str) -> String {
 }
 
 fn clean_stream_url(u: &str) -> String {
-    u.replace("&amp;", "&")
+    let s = u.replace("&amp;", "&")
      .replace("\\u0026", "&")
      .replace("&quot;", "")
      .replace("\\/", "/")
      .replace("\\\"", "")
      .trim_matches('"')
-     .to_string()
+     .to_string();
+    if s.starts_with("http://") {
+        s.replace("http://", "https://")
+    } else {
+        s
+    }
 }
 
 fn parse_douyin_room_data(
@@ -297,6 +302,7 @@ fn parse_douyin_room_data(
     if m3u8_url.is_none() {
         if let Some(ref flv) = flv_url {
             let converted = flv
+                .replace("http://", "https://")
                 .replace("pull-flv-", "pull-hls-")
                 .replace(".flv?", ".m3u8?")
                 .replace(".flv", ".m3u8");

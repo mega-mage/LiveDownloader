@@ -187,13 +187,21 @@ async fn handle_connection(
         (None, None)
     };
 
-    let target_url = match target_url {
+    let mut target_url = match target_url {
         Some(u) => u,
         None => {
             send_error(&mut stream, 400, "Missing 'url' parameter").await?;
             return Ok(());
         }
     };
+
+    if target_url.starts_with("http://") && (
+        target_url.contains("douyincdn") || target_url.contains("bytecdn") ||
+        target_url.contains("amemv") || target_url.contains("iesdouyin") ||
+        target_url.contains("pstatp") || target_url.contains("bilivideo")
+    ) {
+        target_url = target_url.replace("http://", "https://");
+    }
 
     debug!("Proxying request to: {}", &target_url[..std::cmp::min(120, target_url.len())]);
 
