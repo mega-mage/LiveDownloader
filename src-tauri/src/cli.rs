@@ -165,6 +165,8 @@ pub fn run_cli_commands(config_path: &Path) -> Result<(), Box<dyn std::error::Er
                     quality,
                     video_save_type: None,
                     is_commented: false,
+                    split_mode: None,
+                    split_custom_secs: None,
                 });
 
                 config.save_to_file(config_path)?;

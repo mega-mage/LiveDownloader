@@ -33,11 +33,25 @@ log_success() { echo -e "${GREEN}[SUCCESS] ${NC}$1"; }
 log_warn() { echo -e "${YELLOW}[WARN] ${NC}$1"; }
 log_error() { echo -e "${RED}[ERROR] ${NC}$1"; }
 
-DEST_BIN="/usr/bin/livedownloader"
-DEST_ALIAS="/usr/bin/ld-server"
+is_termux() {
+    [ -n "${TERMUX_VERSION:-}" ] || [ -d "/data/data/com.termux" ] || [[ "${PREFIX:-}" == *"com.termux"* ]]
+}
+
+if is_termux; then
+    PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+    DEST_BIN="${PREFIX}/bin/livedownloader"
+    DEST_ALIAS="${PREFIX}/bin/ld-server"
+    WORK_DIR="${HOME}/.livedownloader"
+else
+    DEST_BIN="/usr/bin/livedownloader"
+    DEST_ALIAS="/usr/bin/ld-server"
+    WORK_DIR="/var/lib/livedownloader"
+fi
 SYSTEMD_PATH="/etc/systemd/system/livedownloader.service"
-WORK_DIR="/var/lib/livedownloader"
 DEFAULT_PORT="10730"
+PID_FILE="${WORK_DIR}/livedownloader.pid"
+LOG_FILE="${WORK_DIR}/livedownloader.log"
+PORT_FILE="${WORK_DIR}/livedownloader.port"
 
 # GitHub 仓库地址
 GITHUB_REPO="mega-mage/LiveDownloader"
@@ -50,7 +64,22 @@ MIRRORS=(
     "https://ghp.ci/"
 )
 
+has_systemd() {
+    if is_termux; then
+        return 1
+    fi
+    if command -v systemctl &> /dev/null && systemctl is-system-running &> /dev/null 2>&1; then
+        return 0
+    elif [ -d /run/systemd/system ]; then
+        return 0
+    fi
+    return 1
+}
+
 check_root() {
+    if is_termux; then
+        return 0
+    fi
     if [ "$EUID" -ne 0 ]; then
         log_error "请使用 root 权限运行此脚本 (例如: sudo $0)"
         exit 1
@@ -69,7 +98,13 @@ check_ffmpeg() {
     inst_ff=${inst_ff:-Y}
     if [[ "$inst_ff" =~ ^[Yy]$ ]]; then
         log_info "正在尝试自动安装 FFmpeg..."
-        if command -v apt-get &> /dev/null; then
+        if is_termux; then
+            if command -v pkg &> /dev/null; then
+                pkg install -y ffmpeg
+            elif command -v apt-get &> /dev/null; then
+                apt-get update && apt-get install -y ffmpeg
+            fi
+        elif command -v apt-get &> /dev/null; then
             apt-get update && apt-get install -y ffmpeg
         elif command -v dnf &> /dev/null; then
             dnf install -y ffmpeg
@@ -180,7 +215,11 @@ obtain_binary() {
 
     if ! command -v cargo &> /dev/null; then
         log_error "无法获取 [${ARCH}] 预编译文件，且本地未安装 Cargo，无法继续！"
-        log_error "解决方法：请手动将 GitHub Release 中对应架构的二进制放置在脚本目录（命名为 livedownloader-server-linux-${ARCH}），或在服务器上安装 Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+        if is_termux; then
+            log_error "解决方法 (Termux): 请运行 'pkg install rust clang' 安装 Rust 工具链后再试。"
+        else
+            log_error "解决方法：请手动将 GitHub Release 中对应架构的二进制放置在脚本目录（命名为 livedownloader-server-linux-${ARCH}），或在服务器上安装 Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+        fi
         exit 1
     fi
 
@@ -205,10 +244,66 @@ configure_firewall() {
     if command -v ufw &> /dev/null && ufw status | grep -q "active"; then
         log_info "检测到 UFW 防火墙启用，尝试放行端口 ${port}/tcp..."
         ufw allow "${port}/tcp" || true
-    elif command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then
+    elif command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
         log_info "检测到 Firewalld 启用，尝试放行端口 ${port}/tcp..."
         firewall-cmd --permanent --add-port="${port}/tcp" || true
         firewall-cmd --reload || true
+    fi
+}
+
+get_saved_port() {
+    if [ -f "$PORT_FILE" ]; then
+        cat "$PORT_FILE"
+    else
+        echo "$DEFAULT_PORT"
+    fi
+}
+
+start_daemon_process() {
+    local port="${1:-$(get_saved_port)}"
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        log_warn "LiveDownloader 服务已在运行中 (PID: $(cat "$PID_FILE"))"
+        return 0
+    fi
+    log_info "正在后台启动 LiveDownloader (端口: ${port})..."
+    cd "$WORK_DIR"
+    nohup "$DEST_BIN" --server --port "$port" > "$LOG_FILE" 2>&1 &
+    local new_pid=$!
+    echo "$new_pid" > "$PID_FILE"
+    echo "$port" > "$PORT_FILE"
+    sleep 1
+    if kill -0 "$new_pid" 2>/dev/null; then
+        log_success "服务已在后台成功启动！PID: ${new_pid}"
+    else
+        log_error "服务启动失败，请检查日志: ${LOG_FILE}"
+        if [ -f "$LOG_FILE" ]; then
+            tail -n 20 "$LOG_FILE"
+        fi
+        return 1
+    fi
+}
+
+stop_daemon_process() {
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid="$(cat "$PID_FILE")"
+        if kill -0 "$pid" 2>/dev/null; then
+            log_info "正在停止进程 (PID: ${pid})..."
+            kill "$pid" 2>/dev/null || true
+            for i in {1..10}; do
+                if ! kill -0 "$pid" 2>/dev/null; then
+                    break
+                fi
+                sleep 0.5
+            done
+            if kill -0 "$pid" 2>/dev/null; then
+                kill -9 "$pid" 2>/dev/null || true
+            fi
+        fi
+        rm -f "$PID_FILE"
+        log_success "服务已停止！"
+    else
+        log_info "未发现正在运行的服务进程。"
     fi
 }
 
@@ -225,11 +320,16 @@ do_install() {
     fi
 
     log_info "正在将二进制文件安装至 ${DEST_BIN}..."
+    mkdir -p "$(dirname "$DEST_BIN")"
+    mkdir -p "$WORK_DIR"
+    echo "$PORT" > "$PORT_FILE"
+
     install -m 755 "$FOUND_BIN" "$DEST_BIN"
     ln -sf "$DEST_BIN" "$DEST_ALIAS"
 
-    log_info "配置 systemd 服务 ${SYSTEMD_PATH} (监听端口: ${PORT})..."
-    cat <<EOF > "$SYSTEMD_PATH"
+    if has_systemd; then
+        log_info "配置 systemd 服务 ${SYSTEMD_PATH} (监听端口: ${PORT})..."
+        cat <<EOF > "$SYSTEMD_PATH"
 [Unit]
 Description=LiveDownloader Backend Service
 After=network.target network-online.target
@@ -247,11 +347,14 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 EOF
-
-    mkdir -p "$WORK_DIR"
-    systemctl daemon-reload || true
-    systemctl enable livedownloader
-    systemctl restart livedownloader
+        systemctl daemon-reload || true
+        systemctl enable livedownloader
+        systemctl restart livedownloader
+    else
+        log_info "检测到非 systemd 环境 (Termux/无 systemd)，使用后台进程守护模式启动..."
+        stop_daemon_process
+        start_daemon_process "$PORT"
+    fi
 
     configure_firewall "$PORT"
 
@@ -260,10 +363,17 @@ EOF
     log_success "===================================================="
     echo -e "${CYAN}服务端口:${NC} ${PORT}"
     echo -e "${CYAN}数据目录:${NC} ${WORK_DIR}"
-    echo -e "${CYAN}启动服务:${NC} systemctl start livedownloader"
-    echo -e "${CYAN}停止服务:${NC} systemctl stop livedownloader"
-    echo -e "${CYAN}查看状态:${NC} systemctl status livedownloader"
-    echo -e "${CYAN}实时日志:${NC} journalctl -u livedownloader -f"
+    if has_systemd; then
+        echo -e "${CYAN}启动服务:${NC} systemctl start livedownloader"
+        echo -e "${CYAN}停止服务:${NC} systemctl stop livedownloader"
+        echo -e "${CYAN}查看状态:${NC} systemctl status livedownloader"
+        echo -e "${CYAN}实时日志:${NC} journalctl -u livedownloader -f"
+    else
+        echo -e "${CYAN}启动服务:${NC} $0 start"
+        echo -e "${CYAN}停止服务:${NC} $0 stop"
+        echo -e "${CYAN}查看状态:${NC} $0 status"
+        echo -e "${CYAN}实时日志:${NC} $0 logs"
+    fi
 }
 
 # 2. 更新
@@ -283,52 +393,95 @@ do_update() {
     obtain_binary
 
     log_info "停止现有 LiveDownloader 服务..."
-    systemctl stop livedownloader || true
+    if has_systemd; then
+        systemctl stop livedownloader || true
+    else
+        stop_daemon_process
+    fi
 
     log_info "替换二进制文件..."
+    mkdir -p "$(dirname "$DEST_BIN")"
     install -m 755 "$FOUND_BIN" "$DEST_BIN"
     ln -sf "$DEST_BIN" "$DEST_ALIAS"
 
     log_info "重启 LiveDownloader 服务..."
-    systemctl daemon-reload || true
-    systemctl restart livedownloader || systemctl start livedownloader
+    if has_systemd; then
+        systemctl daemon-reload || true
+        systemctl restart livedownloader || systemctl start livedownloader
+    else
+        start_daemon_process
+    fi
 
     log_success "===================================================="
     log_success "  LiveDownloader 服务 [${ARCH}] 更新完成并已重新启动！"
     log_success "===================================================="
-    systemctl status livedownloader --no-pager || true
+    if has_systemd; then
+        systemctl status livedownloader --no-pager || true
+    else
+        do_status
+    fi
 }
 
 # 3. 服务控制函数
 do_start() {
     check_root
-    log_info "正在启动 LiveDownloader 服务..."
-    systemctl start livedownloader
-    log_success "服务已启动！"
-    systemctl status livedownloader --no-pager || true
+    if has_systemd; then
+        log_info "正在启动 LiveDownloader 服务..."
+        systemctl start livedownloader
+        log_success "服务已启动！"
+        systemctl status livedownloader --no-pager || true
+    else
+        start_daemon_process
+    fi
 }
 
 do_stop() {
     check_root
-    log_info "正在停止 LiveDownloader 服务..."
-    systemctl stop livedownloader
-    log_success "服务已停止！"
+    if has_systemd; then
+        log_info "正在停止 LiveDownloader 服务..."
+        systemctl stop livedownloader
+        log_success "服务已停止！"
+    else
+        stop_daemon_process
+    fi
 }
 
 do_restart() {
     check_root
-    log_info "正在重启 LiveDownloader 服务..."
-    systemctl restart livedownloader
-    log_success "服务已重启！"
-    systemctl status livedownloader --no-pager || true
+    if has_systemd; then
+        log_info "正在重启 LiveDownloader 服务..."
+        systemctl restart livedownloader
+        log_success "服务已重启！"
+        systemctl status livedownloader --no-pager || true
+    else
+        stop_daemon_process
+        start_daemon_process
+    fi
 }
 
 do_status() {
-    systemctl status livedownloader --no-pager || true
+    if has_systemd; then
+        systemctl status livedownloader --no-pager || true
+    else
+        if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+            log_success "LiveDownloader 服务正在运行中 (PID: $(cat "$PID_FILE"), 端口: $(get_saved_port))"
+        else
+            log_warn "LiveDownloader 服务未在运行。"
+        fi
+    fi
 }
 
 do_logs() {
-    journalctl -u livedownloader -f -n 100
+    if has_systemd; then
+        journalctl -u livedownloader -f -n 100
+    else
+        if [ -f "$LOG_FILE" ]; then
+            log_info "展示最新日志 (${LOG_FILE}):"
+            tail -n 100 -f "$LOG_FILE"
+        else
+            log_error "未找到日志文件: ${LOG_FILE}"
+        fi
+    fi
 }
 
 # 4. 卸载
@@ -342,14 +495,18 @@ do_uninstall() {
         exit 0
     fi
 
-    log_info "停止并禁用 systemd 服务..."
-    systemctl stop livedownloader || true
-    systemctl disable livedownloader || true
+    log_info "停止服务..."
+    if has_systemd; then
+        systemctl stop livedownloader || true
+        systemctl disable livedownloader || true
 
-    if [ -f "$SYSTEMD_PATH" ]; then
-        log_info "删除 systemd 服务配置文件..."
-        rm -f "$SYSTEMD_PATH"
-        systemctl daemon-reload || true
+        if [ -f "$SYSTEMD_PATH" ]; then
+            log_info "删除 systemd 服务配置文件..."
+            rm -f "$SYSTEMD_PATH"
+            systemctl daemon-reload || true
+        fi
+    else
+        stop_daemon_process
     fi
 
     log_info "删除二进制文件与快捷链接..."

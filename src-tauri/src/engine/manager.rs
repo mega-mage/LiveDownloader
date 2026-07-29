@@ -18,6 +18,12 @@ pub struct RoomStatus {
     pub record_path: Option<String>,
     pub live_url: Option<String>, // Direct HLS or playable URL
     pub platform: String,
+    #[serde(default)]
+    pub split_mode: Option<String>,
+    #[serde(default)]
+    pub split_custom_secs: Option<u64>,
+    #[serde(default)]
+    pub current_auto_duration_secs: Option<u64>,
 }
 
 pub struct TaskManager {
@@ -38,11 +44,13 @@ impl TaskManager {
         // Scan and move leftover files from downloading to download dir
         scan_and_move_leftovers(config_path.as_ref(), &config.settings.save_path);
 
+        let initial_statuses = load_room_statuses_from_file(config_path.as_ref());
+
         Ok(Self {
             config_path: config_path.as_ref().to_path_buf(),
             config: Arc::new(RwLock::new(config)),
             active_tasks: HashMap::new(),
-            room_statuses: Arc::new(RwLock::new(HashMap::new())),
+            room_statuses: Arc::new(RwLock::new(initial_statuses)),
             is_paused,
         })
     }
@@ -165,6 +173,8 @@ impl TaskManager {
                     let paused = self.is_paused.load(std::sync::atomic::Ordering::SeqCst);
                     let initial_status = if paused { "Paused" } else { "Idle" };
                     
+                    let existing_auto_dur = map.get(&url).and_then(|st| st.current_auto_duration_secs);
+
                     map.insert(url.clone(), RoomStatus {
                         url: url.clone(),
                         title: "".to_string(),
@@ -173,6 +183,9 @@ impl TaskManager {
                         record_path: None,
                         live_url: None,
                         platform: handler_name.to_string(),
+                        split_mode: url_cfg.split_mode.clone(),
+                        split_custom_secs: url_cfg.split_custom_secs,
+                        current_auto_duration_secs: existing_auto_dur,
                     });
                 }
                 
@@ -309,6 +322,17 @@ async fn monitor_room_loop(
                 );
                 notifier.notify(&push_title, &push_content, &app_config).await;
                 
+                let (room_split_mode, room_split_custom_secs, current_auto_duration) = {
+                    let r = config.read().await;
+                    let room_cfg = r.rooms.iter().find(|rm| rm.url == url);
+                    let split_m = room_cfg.and_then(|rm| rm.split_mode.clone());
+                    let split_c = room_cfg.and_then(|rm| rm.split_custom_secs);
+
+                    let st_map = statuses.read().await;
+                    let auto_dur = st_map.get(&url).and_then(|st| st.current_auto_duration_secs);
+                    (split_m, split_c, auto_dur)
+                };
+
                 // Update shared status state
                 {
                     let mut map = statuses.write().await;
@@ -320,12 +344,25 @@ async fn monitor_room_loop(
                         record_path: Some(format!("./downloads/{}/...", display_name)),
                         live_url: stream_urls.m3u8_url.clone().or_else(|| Some(stream_urls.record_url.clone())),
                         platform: handler.name().to_string(),
+                        split_mode: room_split_mode.clone(),
+                        split_custom_secs: room_split_custom_secs,
+                        current_auto_duration_secs: current_auto_duration,
                     });
                 }
                 save_room_statuses(&statuses).await;
                 
                 // Start record session
-                match recorder.start_record(display_name, &title, &stream_urls, &app_config, &config_path, custom_format.as_deref()).await {
+                match recorder.start_record(
+                    display_name,
+                    &title,
+                    &stream_urls,
+                    &app_config,
+                    &config_path,
+                    custom_format.as_deref(),
+                    room_split_mode.as_deref(),
+                    room_split_custom_secs,
+                    current_auto_duration,
+                ).await {
                     Ok(mut session) => {
                         info!("Recording started for [{}], output file: {:?}", display_name, session.output_file_path);
                         
@@ -343,6 +380,9 @@ async fn monitor_room_loop(
                         let app_config_cloned = app_config.clone();
                         let display_name_str = display_name.to_string();
                         let notifier_cloned = crate::engine::notifier::Notifier::new();
+                        let url_str = url.clone();
+                        let statuses_cloned = statuses.clone();
+                        let room_split_mode_str = room_split_mode.clone().unwrap_or_else(|| "auto".to_string());
                         
                         let (poll_stop_tx, mut poll_stop_rx) = tokio::sync::watch::channel(false);
                         
@@ -370,11 +410,36 @@ async fn monitor_room_loop(
                                             if let Some(filename) = file_path.file_name() {
                                                 let _ = std::fs::create_dir_all(&target_dir_path);
                                                 let dest = target_dir_path.join(filename);
+                                                let actual_bytes = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
                                                 info!("Real-time segment move: Moving completed segment from downloading to final dir: {:?}", dest);
                                                 if let Err(e) = std::fs::rename(&file_path, &dest) {
                                                     debug!("Rename failed for segment, falling back to copy/remove: {}", e);
                                                     if let Err(err) = std::fs::copy(&file_path, &dest).and_then(|_| std::fs::remove_file(&file_path)) {
                                                         error!("Failed to move completed segment {:?} to {:?}: {}", file_path, dest, err);
+                                                    }
+                                                }
+
+                                                // Dynamic Auto-Adjustment Logic for "auto" split mode
+                                                if room_split_mode_str.to_lowercase() == "auto" {
+                                                    let actual_mb = actual_bytes as f64 / (1024.0 * 1024.0);
+                                                    let target_mb = app_config_cloned.settings.split_size_mb.max(10) as f64;
+                                                    
+                                                    if actual_mb > 1.0 {
+                                                        let mut map = statuses_cloned.write().await;
+                                                        if let Some(room) = map.get_mut(&url_str) {
+                                                            let current_secs = room.current_auto_duration_secs.unwrap_or(600);
+                                                            let is_in_target_range = actual_mb >= target_mb * 0.90 && actual_mb <= target_mb * 1.10;
+                                                            
+                                                            if is_in_target_range {
+                                                                info!("Auto split calculation for [{}]: Segment size {:.2} MB is within target ({:.0} MB ±10%). Duration remains {}s.", display_name_str, actual_mb, target_mb, current_secs);
+                                                            } else {
+                                                                let new_secs = ((current_secs as f64) * (target_mb / actual_mb)).round() as u64;
+                                                                let clamped_secs = new_secs.clamp(60, 86400); // 1 min to 24 hours
+                                                                info!("Auto split calculation for [{}]: 1st segment was {:.2} MB in {}s. Adjusting next segment duration to {}s (~{:.1} mins) to target {:.0} MB.", display_name_str, actual_mb, current_secs, clamped_secs, clamped_secs as f64 / 60.0, target_mb);
+                                                                room.current_auto_duration_secs = Some(clamped_secs);
+                                                            }
+                                                        }
+                                                        save_room_statuses(&statuses_cloned).await;
                                                     }
                                                 }
                                             }
@@ -465,15 +530,24 @@ async fn monitor_room_loop(
                 // Recording stopped, update state back to Idle
                 {
                     let mut map = statuses.write().await;
-                    map.insert(url.clone(), RoomStatus {
-                        url: url.clone(),
-                        title: "".to_string(),
-                        anchor_name: display_name.to_string(),
-                        status: "Idle".to_string(),
-                        record_path: None,
-                        live_url: None,
-                        platform: handler.name().to_string(),
-                    });
+                    if let Some(room) = map.get_mut(&url) {
+                        room.status = "Idle".to_string();
+                        room.record_path = None;
+                        room.live_url = None;
+                    } else {
+                        map.insert(url.clone(), RoomStatus {
+                            url: url.clone(),
+                            title: "".to_string(),
+                            anchor_name: display_name.to_string(),
+                            status: "Idle".to_string(),
+                            record_path: None,
+                            live_url: None,
+                            platform: handler.name().to_string(),
+                            split_mode: room_split_mode,
+                            split_custom_secs: room_split_custom_secs,
+                            current_auto_duration_secs: current_auto_duration,
+                        });
+                    }
                 }
                 save_room_statuses(&statuses).await;
             }
@@ -530,6 +604,20 @@ async fn save_room_statuses(statuses: &Arc<RwLock<HashMap<String, RoomStatus>>>)
             let _ = fs::write(status_path, json_str);
         }
     }
+}
+
+fn load_room_statuses_from_file(config_path: &Path) -> HashMap<String, RoomStatus> {
+    if let Some(parent) = config_path.parent() {
+        let status_path = parent.join("statuses.json");
+        if status_path.exists() {
+            if let Ok(content) = fs::read_to_string(&status_path) {
+                if let Ok(map) = serde_json::from_str::<HashMap<String, RoomStatus>>(&content) {
+                    return map;
+                }
+            }
+        }
+    }
+    HashMap::new()
 }
 
 fn get_file_md5<P: AsRef<Path>>(path: P) -> Result<String, std::io::Error> {

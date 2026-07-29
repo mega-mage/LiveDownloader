@@ -24,10 +24,16 @@ pub async fn get_rooms(state: State<'_, AppState>) -> Result<Vec<RoomStatus>, St
                 record_path: None,
                 live_url: None,
                 platform: "".to_string(),
+                split_mode: r.split_mode.clone(),
+                split_custom_secs: r.split_custom_secs,
+                current_auto_duration_secs: None,
             });
         } else {
             if let Some(status) = map.get(&r.url) {
-                result.push(status.clone());
+                let mut status_clone = status.clone();
+                status_clone.split_mode = r.split_mode.clone();
+                status_clone.split_custom_secs = r.split_custom_secs;
+                result.push(status_clone);
             } else {
                 result.push(RoomStatus {
                     url: r.url.clone(),
@@ -37,6 +43,9 @@ pub async fn get_rooms(state: State<'_, AppState>) -> Result<Vec<RoomStatus>, St
                     record_path: None,
                     live_url: None,
                     platform: "".to_string(),
+                    split_mode: r.split_mode.clone(),
+                    split_custom_secs: r.split_custom_secs,
+                    current_auto_duration_secs: None,
                 });
             }
         }
@@ -49,6 +58,8 @@ pub async fn add_room(
     url: String,
     name: Option<String>,
     quality: Option<String>,
+    split_mode: Option<String>,
+    split_custom_secs: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let mut config =
@@ -76,6 +87,12 @@ pub async fn add_room(
         },
         video_save_type: None,
         is_commented: false,
+        split_mode: if split_mode.as_ref().map_or(true, |s| s.trim().is_empty()) {
+            None
+        } else {
+            split_mode
+        },
+        split_custom_secs,
     });
 
     config
@@ -109,11 +126,13 @@ pub async fn update_room_config(
     name: Option<String>,
     quality: Option<String>,
     video_save_type: Option<String>,
+    split_mode: Option<String>,
+    split_custom_secs: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     info!(
-        "update_room_config called. URL: '{}', Name: {:?}, Quality: {:?}, Format: {:?}",
-        url, name, quality, video_save_type
+        "update_room_config called. URL: '{}', Name: {:?}, Quality: {:?}, Format: {:?}, SplitMode: {:?}, SplitSecs: {:?}",
+        url, name, quality, video_save_type, split_mode, split_custom_secs
     );
     let mut config =
         AppConfig::load_or_create(&state.config_toml_path).map_err(|e| e.to_string())?;
@@ -137,6 +156,12 @@ pub async fn update_room_config(
         } else {
             video_save_type.map(|s| s.trim().to_string())
         };
+        room.split_mode = if split_mode.as_ref().map_or(true, |s| s.trim().is_empty()) {
+            None
+        } else {
+            split_mode.map(|s| s.trim().to_string())
+        };
+        room.split_custom_secs = split_custom_secs;
 
         config
             .save_to_file(&state.config_toml_path)

@@ -22,8 +22,12 @@ log_success() { echo -e "${GREEN}[SUCCESS] ${NC}$1"; }
 log_warn() { echo -e "${YELLOW}[WARN] ${NC}$1"; }
 log_error() { echo -e "${RED}[ERROR] ${NC}$1"; }
 
+is_termux() {
+    [ -n "${TERMUX_VERSION:-}" ] || [ -d "/data/data/com.termux" ] || [[ "${PREFIX:-}" == *"com.termux"* ]]
+}
+
 # 1. 检查 root 权限
-if [ "$EUID" -ne 0 ]; then
+if ! is_termux && [ "$EUID" -ne 0 ]; then
     log_error "请使用 root 权限运行此脚本 (例如: sudo $0)"
     exit 1
 fi
@@ -49,7 +53,13 @@ log_info "LiveDownloader 后端端口: ${BACKEND_PORT}"
 if ! command -v caddy &> /dev/null; then
     log_info "未检测到 Caddy，正在安装 Caddy..."
 
-    if [ -f /etc/debian_version ]; then
+    if is_termux; then
+        if command -v pkg &> /dev/null; then
+            pkg install -y caddy
+        elif command -v apt-get &> /dev/null; then
+            apt-get update -y && apt-get install -y caddy
+        fi
+    elif [ -f /etc/debian_version ]; then
         # Debian / Ubuntu
         apt-get update -y && apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
         curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg --yes
@@ -77,15 +87,22 @@ if command -v ufw &> /dev/null; then
     ufw allow 80/tcp || true
     ufw allow 443/tcp || true
     ufw reload || true
-elif command -v firewall-cmd &> /dev/null; then
+elif command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
     firewall-cmd --permanent --add-service=http || true
     firewall-cmd --permanent --add-service=https || true
     firewall-cmd --reload || true
 fi
 
 # 5. 生成 Caddyfile 配置文件
-CADDYFILE_PATH="/etc/caddy/Caddyfile"
-BACKUP_PATH="/etc/caddy/Caddyfile.bak.$(date +%Y%m%d_%H%M%S)"
+if is_termux; then
+    PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+    CADDYFILE_DIR="${PREFIX}/etc/caddy"
+else
+    CADDYFILE_DIR="/etc/caddy"
+fi
+mkdir -p "$CADDYFILE_DIR"
+CADDYFILE_PATH="${CADDYFILE_DIR}/Caddyfile"
+BACKUP_PATH="${CADDYFILE_DIR}/Caddyfile.bak.$(date +%Y%m%d_%H%M%S)"
 
 if [ -f "$CADDYFILE_PATH" ]; then
     log_info "备份旧的 Caddyfile 到 ${BACKUP_PATH}..."
@@ -139,8 +156,12 @@ else
 fi
 
 log_info "重载 Caddy 服务..."
-systemctl enable caddy
-systemctl restart caddy
+if command -v systemctl &> /dev/null && systemctl is-system-running &> /dev/null 2>&1; then
+    systemctl enable caddy || true
+    systemctl restart caddy || systemctl start caddy
+else
+    caddy reload --config "$CADDYFILE_PATH" || caddy start --config "$CADDYFILE_PATH" &
+fi
 
 log_success "===================================================="
 log_success "  Caddy 反向代理与 HTTPS 配置完成！"

@@ -208,7 +208,9 @@ export function RoomSection({
                             anchorName: room.anchor_name,
                             name: matchedRoom?.name || "",
                             quality: matchedRoom?.quality || "",
-                            videoSaveType: matchedRoom?.video_save_type || ""
+                            videoSaveType: matchedRoom?.video_save_type || "",
+                            splitMode: matchedRoom?.split_mode || "auto",
+                            splitCustomSecs: matchedRoom?.split_custom_secs || ""
                           });
                         }}
                       >
@@ -310,7 +312,9 @@ export function RoomSection({
                         anchorName: room.anchor_name,
                         name: matchedRoom?.name || "",
                         quality: matchedRoom?.quality || "",
-                        videoSaveType: matchedRoom?.video_save_type || ""
+                        videoSaveType: matchedRoom?.video_save_type || "",
+                        splitMode: matchedRoom?.split_mode || "auto",
+                        splitCustomSecs: matchedRoom?.split_custom_secs || ""
                       });
                     }}
                   >

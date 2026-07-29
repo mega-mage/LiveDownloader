@@ -67,9 +67,15 @@ async fn api_get_rooms(state: AxumState<SharedState>) -> impl IntoResponse {
                 record_path: None,
                 live_url: None,
                 platform: "".to_string(),
+                split_mode: r.split_mode.clone(),
+                split_custom_secs: r.split_custom_secs,
+                current_auto_duration_secs: None,
             });
         } else if let Some(status) = map.get(&r.url) {
-            result.push(status.clone());
+            let mut status_clone = status.clone();
+            status_clone.split_mode = r.split_mode.clone();
+            status_clone.split_custom_secs = r.split_custom_secs;
+            result.push(status_clone);
         } else {
             result.push(RoomStatus {
                 url: r.url.clone(),
@@ -79,6 +85,9 @@ async fn api_get_rooms(state: AxumState<SharedState>) -> impl IntoResponse {
                 record_path: None,
                 live_url: None,
                 platform: "".to_string(),
+                split_mode: r.split_mode.clone(),
+                split_custom_secs: r.split_custom_secs,
+                current_auto_duration_secs: None,
             });
         }
     }
@@ -90,6 +99,8 @@ pub struct AddRoomRequest {
     url: String,
     name: Option<String>,
     quality: Option<String>,
+    split_mode: Option<String>,
+    split_custom_secs: Option<u64>,
 }
 
 async fn api_add_room(
@@ -113,6 +124,8 @@ async fn api_add_room(
         quality: body.quality.filter(|q| !q.is_empty()),
         video_save_type: None,
         is_commented: false,
+        split_mode: body.split_mode.filter(|s| !s.trim().is_empty()),
+        split_custom_secs: body.split_custom_secs,
     });
     config.save_to_file(&state.config_toml_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     state.change_notify.notify_one();
@@ -267,6 +280,8 @@ pub struct UpdateRoomConfigRequest {
     name: Option<String>,
     quality: Option<String>,
     video_save_type: Option<String>,
+    split_mode: Option<String>,
+    split_custom_secs: Option<u64>,
 }
 
 async fn api_update_room_config(
@@ -281,6 +296,8 @@ async fn api_update_room_config(
         room.name = body.name.filter(|n| !n.trim().is_empty()).map(|s| s.trim().to_string());
         room.quality = body.quality.filter(|q| !q.trim().is_empty()).map(|s| s.trim().to_string());
         room.video_save_type = body.video_save_type.filter(|f| !f.trim().is_empty()).map(|s| s.trim().to_string());
+        room.split_mode = body.split_mode.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string());
+        room.split_custom_secs = body.split_custom_secs;
         config.save_to_file(&state.config_toml_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         state.change_notify.notify_one();
         Ok(Json(serde_json::json!({ "ok": true })))

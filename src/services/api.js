@@ -71,11 +71,11 @@ export async function getRooms() {
   return apiFetch("/api/rooms");
 }
 
-export async function addRoom(url, name, quality) {
-  if (isTauri()) return tauriInvoke("add_room", { url, name, quality });
+export async function addRoom(url, name, quality, splitMode, splitCustomSecs) {
+  if (isTauri()) return tauriInvoke("add_room", { url, name, quality, split_mode: splitMode, split_custom_secs: splitCustomSecs ? Number(splitCustomSecs) : null });
   return apiFetch("/api/room", {
     method: "POST",
-    body: JSON.stringify({ url, name, quality }),
+    body: JSON.stringify({ url, name, quality, split_mode: splitMode, split_custom_secs: splitCustomSecs ? Number(splitCustomSecs) : null }),
   });
 }
 
@@ -150,13 +150,15 @@ export async function saveCookie(platform, value) {
   });
 }
 
-export async function updateRoomConfig(url, name, quality, videoSaveType) {
+export async function updateRoomConfig(url, name, quality, videoSaveType, splitMode, splitCustomSecs) {
   if (isTauri())
     return tauriInvoke("update_room_config", {
       url,
       name,
       quality,
       video_save_type: videoSaveType,
+      split_mode: splitMode,
+      split_custom_secs: splitCustomSecs ? Number(splitCustomSecs) : null,
     });
   return apiFetch("/api/room/config", {
     method: "POST",
@@ -165,6 +167,8 @@ export async function updateRoomConfig(url, name, quality, videoSaveType) {
       name,
       quality,
       video_save_type: videoSaveType,
+      split_mode: splitMode,
+      split_custom_secs: splitCustomSecs ? Number(splitCustomSecs) : null,
     }),
   });
 }

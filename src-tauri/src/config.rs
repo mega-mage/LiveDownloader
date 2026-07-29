@@ -121,6 +121,10 @@ pub struct LiveUrlConfig {
     pub video_save_type: Option<String>,
     #[serde(default = "default_false")]
     pub is_commented: bool,
+    #[serde(default)]
+    pub split_mode: Option<String>,
+    #[serde(default)]
+    pub split_custom_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -508,6 +512,8 @@ impl AppConfig {
                 },
                 video_save_type: None,
                 is_commented,
+                split_mode: None,
+                split_custom_secs: None,
             });
         }
 

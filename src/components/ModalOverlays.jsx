@@ -248,20 +248,30 @@ export function ModalOverlays({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-foreground/80">{t("save_video_format", lang)}</label>
+                <label className="text-xs font-bold text-foreground/80">{lang === "zh" ? "分段切片策略" : "Split Strategy"}</label>
                 <Select
-                  value={roomConfigModal.videoSaveType}
-                  onChange={(e) => setRoomConfigModal(prev => ({ ...prev, videoSaveType: e.target.value }))}
+                  value={roomConfigModal.splitMode || "auto"}
+                  onChange={(e) => setRoomConfigModal(prev => ({ ...prev, splitMode: e.target.value }))}
                 >
-                  <option value="">{lang === "zh" ? `默认格式 (ts)` : `Default (ts)`}</option>
-                  <option value="ts">MPEG-TS (.ts)</option>
-                  <option value="mp4">MP4 (.mp4)</option>
-                  <option value="mkv">Matroska (.mkv)</option>
-                  <option value="flv">FLV (.flv)</option>
-                  <option value="mp3音频">{lang === "zh" ? "MP3 音频 (.mp3)" : "MP3 Audio (.mp3)"}</option>
-                  <option value="m4a音频">{lang === "zh" ? "M4A 音频 (.m4a)" : "M4A Audio (.m4a)"}</option>
+                  <option value="auto">{lang === "zh" ? "自动模式 (首段10分钟试录，按目标体积动态调整)" : "Auto Mode (Dynamic Target Size)"}</option>
+                  <option value="custom">{lang === "zh" ? "自定义固定时长 (秒)" : "Custom Fixed Duration (Secs)"}</option>
+                  <option value="none">{lang === "zh" ? "不切片 (单文件连续保存)" : "No Splitting (Single File)"}</option>
                 </Select>
               </div>
+              {roomConfigModal.splitMode === "custom" && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-foreground/80">{lang === "zh" ? "自定义切片时长 (秒)" : "Custom Split Duration (Secs)"}</label>
+                  <Input
+                    type="number"
+                    placeholder="1800"
+                    value={roomConfigModal.splitCustomSecs || ""}
+                    onChange={(e) => setRoomConfigModal(prev => ({ ...prev, splitCustomSecs: e.target.value }))}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    {lang === "zh" ? "例如 1800 表示每 30 分钟自动生成切片" : "Example: 1800 = 30 minutes per segment"}
+                  </p>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-end gap-2 p-3 px-5 border-t border-border bg-secondary/10">
               <Button 
@@ -281,7 +291,9 @@ export function ModalOverlays({
                       roomConfigModal.url,
                       roomConfigModal.name.trim() || null,
                       roomConfigModal.quality || null,
-                      roomConfigModal.videoSaveType || null
+                      roomConfigModal.videoSaveType || null,
+                      roomConfigModal.splitMode || "auto",
+                      roomConfigModal.splitCustomSecs ? Number(roomConfigModal.splitCustomSecs) : null
                     );
                     const res = await getConfig();
                     setConfig(res);

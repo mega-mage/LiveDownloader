@@ -199,69 +199,21 @@ export function SettingsSection({
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-foreground/80">
-                  {lang === "zh" ? "分段切片模式" : "Split Mode"}
-                </label>
-                <Select value={splitMode} onChange={(e) => setSplitMode(e.target.value)}>
-                  <option value="time">{lang === "zh" ? "按时长切片 (推荐无缝切片)" : "Split by Duration (Time)"}</option>
-                  <option value="size">{lang === "zh" ? "按文件大小切片 (单进程无缝切片)" : "Split by File Size"}</option>
-                  <option value="none">{lang === "zh" ? "不切片 (单文件保存)" : "Single File (No Split)"}</option>
-                </Select>
-              </div>
-
-              {splitMode === "time" && (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-foreground/80">
-                    {lang === "zh" ? "每段时长 (秒)" : "Segment Duration (Seconds)"}
-                  </label>
-                  <Input
-                    type="number"
-                    value={splitTimeSecs}
-                    onChange={(e) => setSplitTimeSecs(e.target.value)}
-                    placeholder="1200"
-                  />
-                  <p className="text-xxs text-muted-foreground">
-                    {lang === "zh" ? "默认 1200 秒（即 20 分钟/段）" : "Default: 1200 seconds (20 minutes)"}
-                  </p>
-                </div>
-              )}
-
-              {splitMode === "size" && (
-                <>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-foreground/80">
-                      {lang === "zh" ? "目标单文件大小 (MB)" : "Target File Size (MB)"}
-                    </label>
-                    <Input
-                      type="number"
-                      value={splitSizeMb}
-                      onChange={(e) => setSplitSizeMb(e.target.value)}
-                      placeholder="1024"
-                    />
-                    <p className="text-xxs text-muted-foreground">
-                      {lang === "zh" ? "例如 1024 表示生成约 1GB/段 的独立视频切片" : "Example: 1024 = ~1GB per video segment"}
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-foreground/80">
-                      {lang === "zh" ? "保底参考码率 (kbps) [自动探测已激活]" : "Fallback Bitrate (kbps) [Auto-Probe Active]"}
-                    </label>
-                    <Input
-                      type="number"
-                      value={splitVideoBitrateKbps}
-                      onChange={(e) => setSplitVideoBitrateKbps(e.target.value)}
-                      placeholder="8000"
-                    />
-                    <p className="text-xxs text-emerald-600 dark:text-emerald-400 font-medium">
-                      {lang === "zh" 
-                        ? "✨ 系统会自动实时探测每个直播间（不同画质/不同主播）的真实码率精确控制切片大小。无法探测时才使用此保底码率。" 
-                        : "✨ System automatically probes the real-time bitrate for each room to calculate segment duration. Fallback only used if probing fails."}
-                    </p>
-                  </div>
-                </>
-              )}
+            <div className="space-y-2 max-w-md">
+              <label className="text-xs font-bold text-foreground/80">
+                {lang === "zh" ? "Auto 模式全局目标分段体积 (MB)" : "Global Target File Size for Auto Mode (MB)"}
+              </label>
+              <Input
+                type="number"
+                value={splitSizeMb}
+                onChange={(e) => setSplitSizeMb(e.target.value)}
+                placeholder="1024"
+              />
+              <p className="text-xxs text-emerald-600 dark:text-emerald-400 font-medium leading-relaxed">
+                {lang === "zh"
+                  ? "✨ 直播间选为 Auto 自动模式时，系统会先录制 10 分钟切片，根据实测体积动态自动算调后续切片时长，使文件稳定保持在目标体积（如 1024 MB = 1GB ±10%）。可在各直播间设置中独立调整切片策略（Auto / 自定义时间 / 不切片）。"
+                  : "✨ In Auto mode, system records a 10-minute initial segment, measures actual size, and dynamically adjusts future segment duration to hit this target (e.g. 1024 MB ±10%). Mode can be configured per live room."}
+              </p>
             </div>
           </CardContent>
         </Card>

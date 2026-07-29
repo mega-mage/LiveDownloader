@@ -114,10 +114,33 @@ impl Recorder {
         config: &AppConfig,
         config_toml_path: &std::path::Path,
         custom_format: Option<&str>,
+        room_split_mode: Option<&str>,
+        room_split_custom_secs: Option<u64>,
+        room_auto_duration_secs: Option<u64>,
     ) -> Result<RecordSession, Box<dyn std::error::Error + Send + Sync>> {
-        // Read split config from AppConfig
-        let split_mode = config.settings.split_mode.to_lowercase();
-        let enable_split = split_mode != "none" && split_mode != "false" && split_mode != "off";
+        // Resolve split mode: room setting first, fallback to global settings
+        let mode = room_split_mode
+            .map(|s| s.to_lowercase())
+            .unwrap_or_else(|| config.settings.split_mode.to_lowercase());
+
+        let (enable_split, segment_time_secs) = match mode.as_str() {
+            "none" | "off" | "false" => (false, 0u64),
+            "custom" => {
+                let secs = room_split_custom_secs
+                    .unwrap_or(config.settings.split_time_secs)
+                    .max(10);
+                (true, secs)
+            }
+            "auto" | _ => {
+                // Auto mode: use calculated duration if available, otherwise default initial 10 mins (600s)
+                let secs = room_auto_duration_secs.unwrap_or(600).max(10);
+                (true, secs)
+            }
+        };
+
+        let segment_time_str = segment_time_secs.to_string();
+
+        let (dir_path, file_path, effective_ext) = Self::build_paths(config, anchor_name, title, enable_split, custom_format);
 
         // Extract headers from stream URLs (passed by platform plugin)
         let mut user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36".to_string();
@@ -132,43 +155,6 @@ impl Recorder {
                 }
             }
         }
-
-        let proxy_addr_str = if config.settings.use_proxy {
-            config.settings.proxy_addr.as_deref()
-        } else {
-            None
-        };
-
-        let (dir_path, file_path, effective_ext) = Self::build_paths(config, anchor_name, title, enable_split, custom_format);
-
-        let segment_time_str = match split_mode.as_str() {
-            "size" => {
-                let size_mb = config.settings.split_size_mb.max(10);
-                let is_audio_format = matches!(custom_format, Some("mp3") | Some("m4a")) || effective_ext == "mp3" || effective_ext == "m4a";
-                let fallback_bitrate = if is_audio_format {
-                    256
-                } else {
-                    (config.settings.split_video_bitrate_kbps as u64).max(100)
-                };
-
-                let effective_bitrate_kbps = match Self::probe_stream_bitrate(&stream_urls.record_url, &user_agent, &custom_headers_str, proxy_addr_str).await {
-                    Some(probed) => {
-                        info!("Auto-detected stream bitrate for [{}]: {} kbps (Target segment size: {} MB)", anchor_name, probed, size_mb);
-                        probed
-                    }
-                    None => {
-                        debug!("Bitrate probing for [{}] yielded no result, using configured fallback bitrate: {} kbps", anchor_name, fallback_bitrate);
-                        fallback_bitrate
-                    }
-                };
-
-                let calc_secs = (size_mb * 8388608) / (effective_bitrate_kbps * 1000);
-                calc_secs.max(10).to_string()
-            }
-            _ => { // "time" or default
-                config.settings.split_time_secs.max(10).to_string()
-            }
-        };
 
         // Create downloading directory inside config directory (e.g. ~/.config/LiveDownloader/downloading)
         let downloading_dir = crate::config::get_downloading_dir(config_toml_path);
@@ -414,151 +400,6 @@ impl Recorder {
             target_dir_path: dir_path,
         })
     }
-
-    /// Probe real-time stream bitrate (in kbps) using M3U8 tags or ffprobe
-    pub async fn probe_stream_bitrate(
-        stream_url: &str,
-        user_agent: &str,
-        custom_headers: &str,
-        proxy_addr: Option<&str>,
-    ) -> Option<u64> {
-        // 1. Try parsing M3U8 playlist
-        if stream_url.contains(".m3u8") {
-            if let Ok(client) = reqwest::Client::builder().user_agent(user_agent).build() {
-                if let Ok(res) = client.get(stream_url).send().await {
-                    if let Ok(text) = res.text().await {
-                        // 1a. Master Playlist: parse BANDWIDTH= attribute
-                        for line in text.lines() {
-                            if line.contains("BANDWIDTH=") {
-                                if let Some(idx) = line.find("BANDWIDTH=") {
-                                    let sub = &line[idx + 10..];
-                                    let end = sub.find(|c: char| !c.is_ascii_digit()).unwrap_or(sub.len());
-                                    if let Ok(bps) = sub[..end].parse::<u64>() {
-                                        if bps > 16_000 {
-                                            return Some(bps / 1000);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 1b. Media Playlist: parse #EXTINF chunk duration & fetch Content-Length
-                        let lines: Vec<&str> = text.lines().collect();
-                        for i in 0..lines.len() {
-                            if lines[i].starts_with("#EXTINF:") {
-                                let dur_str = &lines[i][8..];
-                                let dur_val = dur_str.split(',').next().and_then(|s| s.trim().parse::<f64>().ok()).unwrap_or(0.0);
-                                if dur_val > 0.5 && i + 1 < lines.len() {
-                                    let seg_url_raw = lines[i + 1].trim();
-                                    if !seg_url_raw.is_empty() && !seg_url_raw.starts_with('#') {
-                                        let seg_url = if seg_url_raw.starts_with("http") {
-                                            seg_url_raw.to_string()
-                                        } else if let Ok(base) = url::Url::parse(stream_url) {
-                                            base.join(seg_url_raw).map(|u| u.to_string()).unwrap_or_default()
-                                        } else {
-                                            String::new()
-                                        };
-
-                                        if !seg_url.is_empty() {
-                                            if let Ok(head_res) = client.head(&seg_url).send().await {
-                                                if let Some(cl) = head_res.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|s| s.parse::<u64>().ok()) {
-                                                    let bps = ((cl as f64 * 8.0) / dur_val) as u64;
-                                                    if bps > 16_000 {
-                                                        return Some(bps / 1000);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2. Use ffprobe command with a short 4-second timeout
-        let ffprobe_path = get_ffprobe_path();
-        let mut cmd = Command::new(ffprobe_path);
-        cmd.arg("-v").arg("quiet")
-           .arg("-print_format").arg("json")
-           .arg("-show_format")
-           .arg("-show_streams")
-           .arg("-analyze_duration").arg("2000000")
-           .arg("-probesize").arg("2000000")
-           .arg("-user_agent").arg(user_agent);
-
-        if !custom_headers.is_empty() {
-            cmd.arg("-headers").arg(custom_headers);
-        }
-        if let Some(proxy) = proxy_addr {
-            cmd.arg("-http_proxy").arg(proxy);
-        }
-
-        cmd.arg(stream_url);
-
-        #[cfg(target_os = "windows")]
-        {
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-
-        if let Ok(Ok(output)) = tokio::time::timeout(tokio::time::Duration::from_secs(4), cmd.output()).await {
-            if output.status.success() {
-                if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-                    if let Some(bitrate_str) = json.pointer("/format/bit_rate").and_then(|v| v.as_str()) {
-                        if let Ok(bps) = bitrate_str.parse::<u64>() {
-                            if bps > 16_000 {
-                                return Some(bps / 1000);
-                            }
-                        }
-                    }
-
-                    // Check if bit_rate can be calculated from size and duration
-                    if let (Some(size_str), Some(dur_str)) = (
-                        json.pointer("/format/size").and_then(|v| v.as_str()),
-                        json.pointer("/format/duration").and_then(|v| v.as_str()),
-                    ) {
-                        if let (Ok(size), Ok(dur)) = (size_str.parse::<u64>(), dur_str.parse::<f64>()) {
-                            if dur > 0.1 {
-                                let bps = ((size as f64 * 8.0) / dur) as u64;
-                                if bps > 16_000 {
-                                    return Some(bps / 1000);
-                                }
-                            }
-                        }
-                    }
-
-                    let mut has_video = false;
-                    let mut total_bps: u64 = 0;
-                    if let Some(streams) = json.pointer("/streams").and_then(|v| v.as_array()) {
-                        for s in streams {
-                            if s.get("codec_type").and_then(|v| v.as_str()) == Some("video") {
-                                has_video = true;
-                            }
-                            if let Some(br_str) = s.get("bit_rate").and_then(|v| v.as_str()) {
-                                if let Ok(bps) = br_str.parse::<u64>() {
-                                    total_bps += bps;
-                                }
-                            }
-                        }
-                    }
-
-                    if total_bps > 16_000 {
-                        return Some(total_bps / 1000);
-                    }
-
-                    // If audio-only stream (no video stream), return 256 kbps audio bitrate!
-                    if !has_video {
-                        info!("Stream probed as audio-only, using 256 kbps audio bitrate");
-                        return Some(256);
-                    }
-                }
-            }
-        }
-
-        None
-    }
 }
 
 /// Sanitize filename by removing invalid OS characters
@@ -609,23 +450,4 @@ fn get_ffmpeg_path() -> PathBuf {
 
     // 3. Fallback to system PATH
     PathBuf::from("ffmpeg")
-}
-
-/// Retrieve the custom local FFprobe path or fallback to system path
-fn get_ffprobe_path() -> PathBuf {
-    if let Ok(current_exe) = std::env::current_exe() {
-        if let Some(exe_dir) = current_exe.parent() {
-            let local_ffprobe = exe_dir.join(if cfg!(target_os = "windows") { "ffprobe.exe" } else { "ffprobe" });
-            if local_ffprobe.exists() {
-                return local_ffprobe;
-            }
-        }
-    }
-
-    let cwd_ffprobe = PathBuf::from(if cfg!(target_os = "windows") { "ffprobe.exe" } else { "ffprobe" });
-    if cwd_ffprobe.exists() {
-        return cwd_ffprobe;
-    }
-
-    PathBuf::from("ffprobe")
 }
