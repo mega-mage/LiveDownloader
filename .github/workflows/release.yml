@@ -44,11 +44,18 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install Musl Tools & Cross
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Musl Tools & Fast Cross Binary
         run: |
           sudo apt-get update && sudo apt-get install -y musl-tools
           if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cargo install cross --git https://github.com/cross-rs/cross || cargo install cross
+            if ! command -v cross &> /dev/null; then
+              wget -qO- https://github.com/cross-rs/cross/releases/latest/download/cross-x86_64-unknown-linux-musl.tar.gz | tar xz -C ~/.cargo/bin
+            fi
           fi
 
       - name: Build Server Binary (x86_64 musl)
@@ -77,11 +84,10 @@ jobs:
           path: build_output/livedownloader-server-linux-${{ matrix.arch_name }}
 
   # ============================================================================
-  # 2. Desktop GUI Build Job (Tauri: creates the GitHub Release)
+  # 2. Desktop GUI Build Job (runs concurrently alongside server builds)
   # ============================================================================
   build-desktop:
     name: Desktop GUI (${{ matrix.platform }})
-    needs: build-server
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -124,6 +130,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
       - name: Install Linux Desktop Dependencies
         if: runner.os == 'Linux'
