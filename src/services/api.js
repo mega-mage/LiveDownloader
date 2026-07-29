@@ -212,11 +212,14 @@ export function getStreamProxyUrl(liveUrl, referer, proxyPort) {
   const base = getApiBaseUrl();
   if (!base) return liveUrl;
 
+  const token = getApiToken();
+  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
+
   // If base starts with https:// (e.g. HTTPS domain or reverse proxy), route through base + /proxy
   if (base.startsWith("https://")) {
-    return `${base}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}`;
+    return `${base}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}${tokenParam}`;
   }
 
   // Extract the host:port from the base URL and use the proxy port from the API
-  return `${base.replace(/:\d+$/, "")}:${proxyPort}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}`;
+  return `${base.replace(/:\d+$/, "")}:${proxyPort}/proxy?url=${encodeURIComponent(liveUrl)}&referer=${encodeURIComponent(referer)}${tokenParam}`;
 }

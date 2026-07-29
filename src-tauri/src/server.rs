@@ -18,7 +18,19 @@ use tracing::info;
 
 type SharedState = Arc<AppState>;
 
-/// Auth middleware: checks Bearer token against config api_token
+fn parse_query_param_simple(query: &str, key: &str) -> Option<String> {
+    for pair in query.split('&') {
+        let mut kv = pair.splitn(2, '=');
+        if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
+            if k == key {
+                return Some(urlencoding::decode(v).unwrap_or_default().to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Auth middleware: checks Bearer token against config api_token (or query parameter token/api_token)
 async fn auth_middleware(
     state: AxumState<SharedState>,
     headers: HeaderMap,
@@ -36,14 +48,24 @@ async fn auth_middleware(
     };
 
     if let Some(ref expected_token) = config.settings.api_token {
-        let auth_header = headers
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
+        if !expected_token.trim().is_empty() {
+            let auth_header = headers
+                .get("authorization")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
 
-        let provided_token = auth_header.strip_prefix("Bearer ").unwrap_or("");
-        if provided_token != expected_token {
-            return Err(StatusCode::UNAUTHORIZED);
+            let provided_token = if !auth_header.is_empty() {
+                auth_header.strip_prefix("Bearer ").unwrap_or("").to_string()
+            } else {
+                let query_str = request.uri().query().unwrap_or("");
+                parse_query_param_simple(query_str, "token")
+                    .or_else(|| parse_query_param_simple(query_str, "api_token"))
+                    .unwrap_or_default()
+            };
+
+            if provided_token != *expected_token {
+                return Err(StatusCode::UNAUTHORIZED);
+            }
         }
     }
 
@@ -583,6 +605,7 @@ fn bind_listener(port: u16) -> Result<std::net::TcpListener, Box<dyn std::error:
 pub struct ProxyQuery {
     pub url: String,
     pub referer: Option<String>,
+    pub token: Option<String>,
 }
 
 async fn api_proxy(
@@ -654,6 +677,9 @@ async fn api_proxy(
                         if let Some(ref ref_val) = custom_referer {
                             proxy_path.push_str(&format!("&referer={}", urlencoding::encode(ref_val)));
                         }
+                        if let Some(ref tok_val) = query.token {
+                            proxy_path.push_str(&format!("&token={}", urlencoding::encode(tok_val)));
+                        }
                         result.push_str(&proxy_path);
                     }
                     result.push('\n');
@@ -693,9 +719,9 @@ pub async fn start_server(state: Arc<AppState>, port: u16) -> Result<(), Box<dyn
     let cors = CorsLayer::permissive();
 
     let app = Router::new()
-        .route("/api/video/download", get(api_download_video))
-        .route("/proxy", get(api_proxy))
         .merge(Router::new()
+            .route("/proxy", get(api_proxy))
+            .route("/api/video/download", get(api_download_video))
             .route("/api/rooms", get(api_get_rooms))
             .route("/api/room", post(api_add_room))
             .route("/api/room", delete(api_delete_room))
