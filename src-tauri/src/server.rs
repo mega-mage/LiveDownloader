@@ -48,22 +48,33 @@ async fn auth_middleware(
     };
 
     if let Some(ref expected_token) = config.settings.api_token {
-        if !expected_token.trim().is_empty() {
+        let expected_trimmed = expected_token.trim();
+        if !expected_trimmed.is_empty() {
             let auth_header = headers
                 .get("authorization")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("");
 
-            let provided_token = if !auth_header.is_empty() {
-                auth_header.strip_prefix("Bearer ").unwrap_or("").to_string()
-            } else {
-                let query_str = request.uri().query().unwrap_or("");
-                parse_query_param_simple(query_str, "token")
-                    .or_else(|| parse_query_param_simple(query_str, "api_token"))
-                    .unwrap_or_default()
-            };
+            let mut valid = false;
 
-            if provided_token != *expected_token {
+            if !auth_header.is_empty() {
+                let token_from_header = auth_header.strip_prefix("Bearer ").unwrap_or(auth_header).trim();
+                if token_from_header == expected_trimmed {
+                    valid = true;
+                }
+            }
+
+            if !valid {
+                let query_str = request.uri().query().unwrap_or("");
+                let token_from_query = parse_query_param_simple(query_str, "token")
+                    .or_else(|| parse_query_param_simple(query_str, "api_token"))
+                    .unwrap_or_default();
+                if token_from_query.trim() == expected_trimmed {
+                    valid = true;
+                }
+            }
+
+            if !valid {
                 return Err(StatusCode::UNAUTHORIZED);
             }
         }
@@ -643,6 +654,14 @@ async fn api_proxy(
 ) -> impl IntoResponse {
     let mut target_url = query.url;
     let custom_referer = query.referer;
+
+    if target_url.contains("pull-flv-") || target_url.contains(".flv") {
+        target_url = target_url
+            .replace("http://", "https://")
+            .replace("pull-flv-", "pull-hls-")
+            .replace(".flv?", ".m3u8?")
+            .replace(".flv", ".m3u8");
+    }
 
     if target_url.starts_with("http://") && (
         target_url.contains("douyincdn") || target_url.contains("bytecdn") ||

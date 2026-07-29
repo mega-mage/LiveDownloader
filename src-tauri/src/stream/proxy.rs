@@ -201,6 +201,14 @@ async fn handle_connection(
         }
     };
 
+    if target_url.contains("pull-flv-") || target_url.contains(".flv") {
+        target_url = target_url
+            .replace("http://", "https://")
+            .replace("pull-flv-", "pull-hls-")
+            .replace(".flv?", ".m3u8?")
+            .replace(".flv", ".m3u8");
+    }
+
     if target_url.starts_with("http://") && (
         target_url.contains("douyincdn") || target_url.contains("bytecdn") ||
         target_url.contains("amemv") || target_url.contains("iesdouyin") ||

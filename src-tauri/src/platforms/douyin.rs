@@ -298,6 +298,16 @@ fn parse_douyin_room_data(
         }
     }
 
+    if let Some(ref mut u) = m3u8_url {
+        if u.contains("pull-flv-") || u.contains(".flv") {
+            *u = u
+                .replace("http://", "https://")
+                .replace("pull-flv-", "pull-hls-")
+                .replace(".flv?", ".m3u8?")
+                .replace(".flv", ".m3u8");
+        }
+    }
+
     // If m3u8_url is missing, convert flv_url to m3u8_url for Web live player
     if m3u8_url.is_none() {
         if let Some(ref flv) = flv_url {
