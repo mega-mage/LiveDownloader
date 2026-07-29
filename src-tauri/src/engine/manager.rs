@@ -62,11 +62,13 @@ impl TaskManager {
         let recorder = Arc::new(Recorder::new());
         
         let mut last_config_md5 = String::new();
+        let mut was_paused = false;
         
         loop {
             // Check if engine is paused
             let paused = self.is_paused.load(std::sync::atomic::Ordering::SeqCst);
             if paused {
+                was_paused = true;
                 if !self.active_tasks.is_empty() {
                     info!("Engine is paused. Stopping all active monitoring tasks...");
                     self.stop_all_tasks().await;
@@ -81,10 +83,16 @@ impl TaskManager {
                 }
                 continue;
             }
+
+            let engine_just_resumed = was_paused;
+            if engine_just_resumed {
+                was_paused = false;
+                info!("Engine resumed from pause. Restarting monitoring tasks...");
+            }
             
             // Check if we need to reload configurations
             let current_md5 = get_file_md5(&self.config_path).unwrap_or_default();
-            let reload_needed = current_md5 != last_config_md5;
+            let reload_needed = current_md5 != last_config_md5 || engine_just_resumed;
             
             if reload_needed {
                 info!("Configuration file changed or loaded for the first time. Reloading...");

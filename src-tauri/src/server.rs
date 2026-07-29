@@ -81,17 +81,37 @@ async fn api_get_rooms(state: AxumState<SharedState>) -> impl IntoResponse {
     let mut result = Vec::new();
     for r in config.rooms {
         if r.is_commented {
+            let (anchor, title, platform, auto_dur) = if let Some(existing) = map.get(&r.url) {
+                (
+                    if existing.anchor_name.is_empty() || existing.anchor_name == "未知主播" {
+                        r.name.clone().unwrap_or_else(|| "未知主播".to_string())
+                    } else {
+                        existing.anchor_name.clone()
+                    },
+                    existing.title.clone(),
+                    existing.platform.clone(),
+                    existing.current_auto_duration_secs,
+                )
+            } else {
+                (
+                    r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
+                    "".to_string(),
+                    "".to_string(),
+                    None,
+                )
+            };
+
             result.push(RoomStatus {
                 url: r.url.clone(),
-                title: "".to_string(),
-                anchor_name: r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
+                title,
+                anchor_name: anchor,
                 status: "Paused".to_string(),
                 record_path: None,
                 live_url: None,
-                platform: "".to_string(),
+                platform,
                 split_mode: r.split_mode.clone(),
                 split_custom_secs: r.split_custom_secs,
-                current_auto_duration_secs: None,
+                current_auto_duration_secs: auto_dur,
             });
         } else if let Some(status) = map.get(&r.url) {
             let mut status_clone = status.clone();
@@ -348,9 +368,19 @@ async fn api_toggle_room_paused(
         return Err((StatusCode::NOT_FOUND, "未找到该直播间".to_string()));
     }
     config.save_to_file(&state.config_toml_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    if body.paused {
+    {
         let mut map = state.room_statuses.write().await;
-        map.remove(&body.url);
+        if body.paused {
+            if let Some(status) = map.get_mut(&body.url) {
+                status.status = "Paused".to_string();
+                status.live_url = None;
+                status.record_path = None;
+            }
+        } else if let Some(status) = map.get_mut(&body.url) {
+            if status.status == "Paused" {
+                status.status = "Idle".to_string();
+            }
+        }
     }
     state.change_notify.notify_one();
     Ok(Json(serde_json::json!({ "ok": true })))
