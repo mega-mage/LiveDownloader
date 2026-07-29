@@ -193,6 +193,10 @@ impl Default for AppConfig {
 }
 
 pub fn get_config_paths() -> (PathBuf, PathBuf) {
+    if std::path::Path::new("config.toml").exists() {
+        let p = PathBuf::from("config.toml");
+        return (p.clone(), p);
+    }
     let config_dir = if let Some(proj_dirs) =
         directories::ProjectDirs::from("com", "LiveDownloader", "LiveDownloader")
     {
@@ -273,6 +277,10 @@ impl AppConfig {
         let path = path.as_ref();
         let toml_str = std::fs::read_to_string(path)?;
         let mut config: AppConfig = toml::from_str(&toml_str)?;
+
+        if config.settings.save_path.as_os_str().is_empty() {
+            config.settings.save_path = default_save_path();
+        }
 
         // Decrypt all cookies loaded from config.toml
         for value in config.cookies.values_mut() {

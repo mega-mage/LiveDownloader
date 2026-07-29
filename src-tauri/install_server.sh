@@ -341,6 +341,9 @@ do_install() {
         elif [ -d "${HOME}/storage/downloads" ]; then
             TERMUX_SAVE_PATH="${HOME}/storage/downloads"
         fi
+        if [ -z "${TERMUX_SAVE_PATH:-}" ]; then
+            TERMUX_SAVE_PATH="/sdcard/Download"
+        fi
         log_success "Termux 模式默认保存目录设定为手机公共下载文件夹: ${TERMUX_SAVE_PATH}"
     fi
 
@@ -349,8 +352,8 @@ do_install() {
     if [ ! -f "$CONFIG_FILE" ]; then
         log_info "生成初始配置文件 ${CONFIG_FILE}..."
         default_sp="./downloads"
-        if is_termux && [ -n "${TERMUX_SAVE_PATH:-}" ]; then
-            default_sp="${TERMUX_SAVE_PATH}"
+        if is_termux; then
+            default_sp="${TERMUX_SAVE_PATH:-/sdcard/Download}"
         fi
         mkdir -p "$default_sp" 2>/dev/null || true
         cat <<EOF > "$CONFIG_FILE"
@@ -377,10 +380,11 @@ tg_auto_upload = false
 
 [[rooms]]
 EOF
-    elif is_termux && [ -n "${TERMUX_SAVE_PATH:-}" ]; then
-        if grep -q 'save_path = "\./downloads"' "$CONFIG_FILE" 2>/dev/null; then
-            log_info "自动升级配置：将保存路径调整为手机公共下载夹 (${TERMUX_SAVE_PATH})..."
-            sed -i "s|save_path = \".*\"|save_path = \"${TERMUX_SAVE_PATH}\"|" "$CONFIG_FILE" || true
+    elif is_termux; then
+        local sp_val="${TERMUX_SAVE_PATH:-/sdcard/Download}"
+        if grep -q 'save_path = ""' "$CONFIG_FILE" 2>/dev/null || grep -q 'save_path = "\./downloads"' "$CONFIG_FILE" 2>/dev/null; then
+            log_info "自动修正/升级配置：将保存路径调整为手机公共下载文件夹 (${sp_val})..."
+            sed -i "s|save_path = \".*\"|save_path = \"${sp_val}\"|" "$CONFIG_FILE" || true
         fi
     fi
 
