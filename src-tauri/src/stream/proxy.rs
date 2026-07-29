@@ -222,12 +222,15 @@ async fn handle_connection(
 
     // Make the proxied request with proper headers
     let mut req = client.get(&target_url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-        .header("Accept", "*/*")
-        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+        .header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+        .header(reqwest::header::ACCEPT, "*/*")
+        .header(reqwest::header::ACCEPT_LANGUAGE, "zh-CN,zh;q=0.9,en;q=0.8");
 
     if !referer.is_empty() {
-        req = req.header("Referer", referer);
+        let clean_ref = sanitize_header_value(&referer);
+        if let Ok(val) = reqwest::header::HeaderValue::from_str(&clean_ref) {
+            req = req.header(reqwest::header::REFERER, val);
+        }
     }
 
     let resp = match req.send().await {
@@ -397,4 +400,11 @@ async fn send_error(
     );
     stream.write_all(response.as_bytes()).await?;
     Ok(())
+}
+
+fn sanitize_header_value(s: &str) -> String {
+    let clean: String = s.chars()
+        .filter(|c| c.is_ascii() && !c.is_ascii_control())
+        .collect();
+    clean.trim().to_string()
 }

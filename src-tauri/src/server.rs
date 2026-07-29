@@ -642,12 +642,16 @@ async fn api_proxy(
         .unwrap_or_default();
 
     let mut req = client.get(&target_url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-        .header("Accept", "*/*")
-        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+        .header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+        .header(reqwest::header::ACCEPT, "*/*")
+        .header(reqwest::header::ACCEPT_LANGUAGE, "zh-CN,zh;q=0.9,en;q=0.8");
 
     if !referer.is_empty() {
-        req = req.header("Referer", referer);
+        let sanitized = referer.chars().filter(|c| c.is_ascii() && !c.is_ascii_control()).collect::<String>();
+        let trimmed = sanitized.trim();
+        if let Ok(val) = reqwest::header::HeaderValue::from_str(trimmed) {
+            req = req.header(reqwest::header::REFERER, val);
+        }
     }
 
     match req.send().await {
