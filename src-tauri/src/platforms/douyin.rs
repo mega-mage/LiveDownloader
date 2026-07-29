@@ -209,6 +209,10 @@ fn clean_stream_url(u: &str) -> String {
     u.replace("&amp;", "&")
      .replace("\\u0026", "&")
      .replace("&quot;", "")
+     .replace("\\/", "/")
+     .replace("\\\"", "")
+     .trim_matches('"')
+     .to_string()
 }
 
 fn parse_douyin_room_data(
@@ -260,10 +264,30 @@ fn parse_douyin_room_data(
             if let Some(origin) = sdk_data["data"]["origin"]["main"].as_object() {
                 let vcodec = sdk_data["data"]["origin"]["main"]["sdk_params"]["VCodec"].as_str().unwrap_or("");
                 if let Some(hls) = origin.get("hls").and_then(|h| h.as_str()) {
-                    m3u8_url = Some(clean_stream_url(&format!("{}&codec={}", hls, vcodec)));
+                    let clean_hls = clean_stream_url(hls);
+                    let final_hls = if !vcodec.is_empty() {
+                        if clean_hls.contains('?') {
+                            format!("{}&codec={}", clean_hls, vcodec)
+                        } else {
+                            format!("{}?codec={}", clean_hls, vcodec)
+                        }
+                    } else {
+                        clean_hls
+                    };
+                    m3u8_url = Some(final_hls);
                 }
                 if let Some(flv) = origin.get("flv").and_then(|f| f.as_str()) {
-                    flv_url = Some(clean_stream_url(&format!("{}&codec={}", flv, vcodec)));
+                    let clean_flv = clean_stream_url(flv);
+                    let final_flv = if !vcodec.is_empty() {
+                        if clean_flv.contains('?') {
+                            format!("{}&codec={}", clean_flv, vcodec)
+                        } else {
+                            format!("{}?codec={}", clean_flv, vcodec)
+                        }
+                    } else {
+                        clean_flv
+                    };
+                    flv_url = Some(final_flv);
                 }
             }
         }

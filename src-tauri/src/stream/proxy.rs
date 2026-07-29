@@ -202,7 +202,7 @@ async fn handle_connection(
         r.clone()
     } else if target_url.contains("bilivideo") || target_url.contains("bilibili") {
         "https://live.bilibili.com/".to_string()
-    } else if target_url.contains("douyin") || target_url.contains("douyincdn") || target_url.contains("bytecdn") {
+    } else if target_url.contains("douyin") || target_url.contains("douyincdn") || target_url.contains("bytecdn") || target_url.contains("amemv") || target_url.contains("iesdouyin") || target_url.contains("pstatp") {
         "https://live.douyin.com/".to_string()
     } else {
         "".to_string()
@@ -283,7 +283,8 @@ async fn handle_connection(
 
 /// Rewrite relative URLs in m3u8 playlists to point through our proxy
 fn rewrite_m3u8(content: &str, base_url: &str, referer: Option<&str>) -> String {
-    let base = if let Some(pos) = base_url.rfind('/') {
+    let base_parsed = url::Url::parse(base_url).ok();
+    let base_fallback = if let Some(pos) = base_url.rfind('/') {
         &base_url[..pos + 1]
     } else {
         base_url
@@ -295,7 +296,7 @@ fn rewrite_m3u8(content: &str, base_url: &str, referer: Option<&str>) -> String 
         if trimmed.is_empty() || trimmed.starts_with('#') {
             // Check for URI= attributes in EXT tags (e.g., EXT-X-MAP)
             if trimmed.contains("URI=\"") {
-                let rewritten_line = rewrite_uri_attribute(trimmed, base, referer);
+                let rewritten_line = rewrite_uri_attribute(trimmed, base_url, referer);
                 result.push_str(&rewritten_line);
             } else {
                 result.push_str(trimmed);
@@ -304,8 +305,10 @@ fn rewrite_m3u8(content: &str, base_url: &str, referer: Option<&str>) -> String 
             // This is a URL line (segment or sub-playlist)
             let full_url = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
                 trimmed.to_string()
+            } else if let Some(ref base_u) = base_parsed {
+                base_u.join(trimmed).map(|u| u.to_string()).unwrap_or_else(|_| format!("{}{}", base_fallback, trimmed))
             } else {
-                format!("{}{}", base, trimmed)
+                format!("{}{}", base_fallback, trimmed)
             };
             let encoded = urlencoding::encode(&full_url);
             let mut proxy_path = format!("/proxy?url={}", encoded);
@@ -320,15 +323,24 @@ fn rewrite_m3u8(content: &str, base_url: &str, referer: Option<&str>) -> String 
 }
 
 /// Rewrite URI="..." attributes inside EXT tags
-fn rewrite_uri_attribute(line: &str, base: &str, referer: Option<&str>) -> String {
+fn rewrite_uri_attribute(line: &str, base_url: &str, referer: Option<&str>) -> String {
+    let base_parsed = url::Url::parse(base_url).ok();
+    let base_fallback = if let Some(pos) = base_url.rfind('/') {
+        &base_url[..pos + 1]
+    } else {
+        base_url
+    };
+
     if let Some(start) = line.find("URI=\"") {
         let uri_start = start + 5; // skip URI="
         if let Some(end) = line[uri_start..].find('"') {
             let uri = &line[uri_start..uri_start + end];
             let full_url = if uri.starts_with("http://") || uri.starts_with("https://") {
                 uri.to_string()
+            } else if let Some(ref base_u) = base_parsed {
+                base_u.join(uri).map(|u| u.to_string()).unwrap_or_else(|_| format!("{}{}", base_fallback, uri))
             } else {
-                format!("{}{}", base, uri)
+                format!("{}{}", base_fallback, uri)
             };
             let encoded = urlencoding::encode(&full_url);
             let mut new_uri = format!("/proxy?url={}", encoded);
