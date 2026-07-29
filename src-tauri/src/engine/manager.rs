@@ -712,17 +712,28 @@ pub fn scan_and_move_leftovers(config_toml_path: &Path, save_path: &Path) {
         return;
     }
 
+    if let Err(e) = std::fs::create_dir_all(save_path) {
+        debug!("Failed to ensure save_path directory exists: {}", e);
+        return;
+    }
+
     if let Ok(entries) = std::fs::read_dir(&downloading_dir) {
         for entry in entries.flatten() {
             let src = entry.path();
             if src.is_file() {
+                // Check if file is currently open/locked by FFmpeg or another process
+                if std::fs::OpenOptions::new().write(true).open(&src).is_err() {
+                    debug!("Startup cleaner: File {:?} is currently in use by another process, skipping for now", src);
+                    continue;
+                }
+
                 if let Some(name) = entry.file_name().to_str() {
                     let dest = save_path.join(name);
                     info!("Startup cleaner: Moving leftover file from downloading to download dir: {:?}", dest);
                     if let Err(e) = std::fs::rename(&src, &dest) {
                         debug!("Rename failed for leftover file, falling back to copy/remove: {}", e);
                         if let Err(err) = std::fs::copy(&src, &dest).and_then(|_| std::fs::remove_file(&src)) {
-                            error!("Failed to move leftover file {:?} to {:?}: {}", src, dest, err);
+                            warn!("Startup cleaner: Could not move leftover file {:?} to {:?}: {}", src, dest, err);
                         }
                     }
                 }
