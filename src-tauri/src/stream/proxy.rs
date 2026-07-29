@@ -20,6 +20,10 @@ impl StreamProxy {
         let client = Arc::new(
             Client::builder()
                 .danger_accept_invalid_certs(true)
+                .no_proxy()
+                .tcp_keepalive(std::time::Duration::from_secs(30))
+                .pool_max_idle_per_host(10)
+                .timeout(std::time::Duration::from_secs(15))
                 .build()
                 .expect("Failed to build reqwest client for proxy")
         );
@@ -218,7 +222,9 @@ async fn handle_connection(
 
     // Make the proxied request with proper headers
     let mut req = client.get(&target_url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+        .header("Accept", "*/*")
+        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
 
     if !referer.is_empty() {
         req = req.header("Referer", referer);
@@ -227,7 +233,7 @@ async fn handle_connection(
     let resp = match req.send().await {
         Ok(r) => r,
         Err(e) => {
-            error!("Proxy fetch error: {}", e);
+            error!("Proxy fetch error for {}: {:#?}", target_url, e);
             send_error(&mut stream, 502, &format!("Upstream error: {}", e)).await?;
             return Ok(());
         }

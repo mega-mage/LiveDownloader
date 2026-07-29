@@ -634,11 +634,17 @@ async fn api_proxy(
 
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
+        .no_proxy()
+        .tcp_keepalive(std::time::Duration::from_secs(30))
+        .pool_max_idle_per_host(10)
+        .timeout(std::time::Duration::from_secs(15))
         .build()
         .unwrap_or_default();
 
     let mut req = client.get(&target_url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+        .header("Accept", "*/*")
+        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
 
     if !referer.is_empty() {
         req = req.header("Referer", referer);
