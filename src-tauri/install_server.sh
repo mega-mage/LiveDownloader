@@ -580,9 +580,16 @@ do_uninstall() {
     log_info "删除二进制文件与快捷链接..."
     rm -f "$DEST_BIN" "$DEST_ALIAS"
 
-    log_info "清理配置文件与工作目录 (${WORK_DIR})..."
+    log_info "清理配置文件与工作目录 (${WORK_DIR} 及 ~/.config/livedownloader)..."
     rm -rf "$WORK_DIR"
-    log_success "已彻底删除配置文件及工作目录！"
+    rm -rf "${HOME}/.config/livedownloader" "${HOME}/.config/LiveDownloader"
+    rm -rf "${HOME}/.livedownloader"
+    if [ -n "${SUDO_USER:-}" ]; then
+        rm -rf "/home/${SUDO_USER}/.config/livedownloader" "/home/${SUDO_USER}/.config/LiveDownloader"
+        rm -rf "/home/${SUDO_USER}/.livedownloader"
+    fi
+    rm -rf "/root/.config/livedownloader" "/root/.config/LiveDownloader" "/root/.livedownloader"
+    log_success "已彻底删除所有配置文件及工作目录！"
 
     log_success "===================================================="
     log_success "  LiveDownloader 卸载完成！"
