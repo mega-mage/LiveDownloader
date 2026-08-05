@@ -351,7 +351,7 @@ do_install() {
     CONFIG_FILE="${WORK_DIR}/config.toml"
     if [ ! -f "$CONFIG_FILE" ]; then
         log_info "生成初始配置文件 ${CONFIG_FILE}..."
-        default_sp="./downloads"
+        default_sp="${HOME}/downloads"
         if is_termux; then
             default_sp="${TERMUX_SAVE_PATH:-/sdcard/Download}"
         fi

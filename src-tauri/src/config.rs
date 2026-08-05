@@ -20,6 +20,9 @@ fn default_save_path() -> PathBuf {
         }
         return PathBuf::from("/sdcard/Download");
     }
+    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+        return PathBuf::from(home).join("downloads");
+    }
     PathBuf::from("./downloads")
 }
 fn default_false() -> bool {
@@ -328,7 +331,7 @@ impl AppConfig {
             .unwrap_or("")
             .trim();
         let save_path = if save_path_str.is_empty() {
-            PathBuf::from("./downloads")
+            default_save_path()
         } else {
             PathBuf::from(save_path_str)
         };
