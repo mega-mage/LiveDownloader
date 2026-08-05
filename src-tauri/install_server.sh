@@ -377,8 +377,6 @@ split_video_bitrate_kbps = 8000
 
 [push]
 tg_auto_upload = false
-
-[[rooms]]
 EOF
     else
         default_sp="${HOME}/downloads"
@@ -388,6 +386,10 @@ EOF
         if grep -q 'save_path = ""' "$CONFIG_FILE" 2>/dev/null || grep -q 'save_path = "\./downloads"' "$CONFIG_FILE" 2>/dev/null; then
             log_info "自动修正/升级配置：将保存路径调整为默认下载文件夹 (${default_sp})..."
             sed -i "s|save_path = \".*\"|save_path = \"${default_sp}\"|" "$CONFIG_FILE" || true
+        fi
+        # 清理可能存在的空 [[rooms]] 段落，避免 TOML 解析缺少 url 报错
+        if grep -q '^\[\[rooms\]\]$' "$CONFIG_FILE" 2>/dev/null; then
+            sed -i '/^\[\[rooms\]\]$/d' "$CONFIG_FILE" || true
         fi
     fi
 

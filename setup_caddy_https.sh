@@ -119,7 +119,7 @@ $DOMAIN {
 
     # 针对实时直播流 (/live/*) 和 代理流 (/proxy/*) 禁用响应缓冲以实现零延迟播放
     @streaming {
-        path /live* /proxy* /api/video/download*
+        path /live* /proxy* /api/videos/download* /api/video/download*
     }
     handle @streaming {
         reverse_proxy 127.0.0.1:$BACKEND_PORT {

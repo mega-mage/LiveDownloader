@@ -129,6 +129,7 @@ pub struct PushConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveUrlConfig {
+    #[serde(default)]
     pub url: String,
     pub name: Option<String>,
     pub quality: Option<String>,
@@ -197,7 +198,7 @@ impl Default for AppConfig {
 
 pub fn get_config_paths() -> (PathBuf, PathBuf) {
     if std::path::Path::new("config.toml").exists() {
-        let p = PathBuf::from("config.toml");
+        let p = std::fs::canonicalize("config.toml").unwrap_or_else(|_| PathBuf::from("./config.toml"));
         return (p.clone(), p);
     }
     let config_dir = if let Some(proj_dirs) =

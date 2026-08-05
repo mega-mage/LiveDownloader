@@ -440,75 +440,13 @@ pub async fn open_recorded_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
-fn split_arguments(command_line: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let mut current = String::new();
-    let mut in_quotes = false;
-
-    let cmd_trimmed = command_line.trim();
-    let cmd_to_parse = if cmd_trimmed.starts_with("ld ") {
-        &cmd_trimmed[3..]
-    } else if cmd_trimmed.starts_with("ld.exe ") {
-        &cmd_trimmed[7..]
-    } else {
-        cmd_trimmed
-    };
-
-    for c in cmd_to_parse.chars() {
-        match c {
-            '"' => {
-                in_quotes = !in_quotes;
-            }
-            ' ' | '　' if !in_quotes => {
-                if !current.is_empty() {
-                    args.push(current.clone());
-                    current.clear();
-                }
-            }
-            _ => {
-                current.push(c);
-            }
-        }
-    }
-    if !current.is_empty() {
-        args.push(current);
-    }
-    args
-}
-
 #[tauri::command]
-pub async fn execute_ld_command(cmd: String) -> Result<String, String> {
+pub async fn execute_ld_command(
+    state: State<'_, AppState>,
+    cmd: String,
+) -> Result<String, String> {
     info!("execute_ld_command called with: {}", cmd);
-    let parsed_args = split_arguments(&cmd);
-    if parsed_args.is_empty() {
-        return Err("指令为空".to_string());
-    }
-
-    let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-
-    let mut command = std::process::Command::new(current_exe);
-    command.args(&parsed_args);
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-
-    let output = command.output().map_err(|e| e.to_string())?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    let mut result = stdout;
-    if !stderr.is_empty() {
-        if !result.is_empty() {
-            result.push_str("\n");
-        }
-        result.push_str(&stderr);
-    }
-
-    Ok(result)
+    Ok(crate::cli::execute_cli_str(&state.config_toml_path, &cmd))
 }
 
 #[tauri::command]

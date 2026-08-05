@@ -63,11 +63,11 @@ fn init_logging(config_toml_path: &Path) -> Result<(), Box<dyn std::error::Error
         .open(&log_path)?;
 
     let file_layer = fmt::layer().with_ansi(false).with_writer(log_file);
-    tracing_subscriber::registry()
+    let _ = tracing_subscriber::registry()
         .with(fmt::layer().with_ansi(true))
         .with(file_layer)
         .with(EnvFilter::try_new("info").unwrap_or_else(|_| EnvFilter::new("info")))
-        .init();
+        .try_init();
 
     Ok(())
 }
@@ -85,10 +85,11 @@ fn init_core(config_toml_path: &Path) -> Result<(
     let manager = TaskManager::new(config_toml_path, is_paused.clone())?;
     let room_statuses = manager.room_statuses.clone();
 
-    let proxy_listener = std::net::TcpListener::bind("0.0.0.0:0")?;
+    let proxy_listener = std::net::TcpListener::bind("0.0.0.0:0")
+        .or_else(|_| std::net::TcpListener::bind("127.0.0.1:0"))?;
     let proxy_port = proxy_listener.local_addr()?.port();
     proxy_listener.set_nonblocking(true)?;
-    info!("Stream proxy will listen on all interfaces (0.0.0.0) on port {}", proxy_port);
+    info!("Stream proxy will listen on port {}", proxy_port);
 
     let change_notify = Arc::new(tokio::sync::Notify::new());
 
@@ -252,7 +253,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     migrate_old_config(old_ini_path, &config_toml_path);
 
     let args: Vec<String> = std::env::args().collect();
-    let is_server_mode = args.iter().any(|a| a == "--server");
+    let is_server_mode = args.iter().any(|a| a == "--server") || (!cfg!(feature = "gui") && cfg!(feature = "server"));
 
     let _port = args.iter().position(|a| a == "--port")
         .and_then(|i| args.get(i + 1))

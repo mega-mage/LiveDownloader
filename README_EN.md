@@ -65,6 +65,13 @@ npm run tauri dev
 npm run tauri build
 ```
 
+### 3. Web API Server Mode (Backend Server)
+```bash
+# Enter src-tauri directory and start local Web REST API server (default port 10730)
+cd src-tauri
+cargo run --no-default-features --features server -- --server --port 10730
+```
+
 ---
 
 ## 🐧 Linux Server Deployment (Server Mode)
@@ -90,12 +97,19 @@ sudo systemctl status livedownloader   # Status
 sudo systemctl enable livedownloader   # Auto-start on boot
 ```
 
-### 2. Configure Caddy Automatic HTTPS
-Run the reverse proxy script in the root directory:
-```bash
-chmod +x setup_caddy_https.sh
-sudo ./setup_caddy_https.sh live.yourdomain.com 10730
-```
+### 2. Configure & Uninstall Caddy Automatic HTTPS
+Run the reverse proxy scripts in the root directory:
+
+- **Setup & Configure Caddy HTTPS**:
+  ```bash
+  chmod +x setup_caddy_https.sh
+  sudo ./setup_caddy_https.sh live.yourdomain.com 10730
+  ```
+- **Uninstall & Clean Caddy HTTPS Configuration**:
+  ```bash
+  chmod +x uninstall_caddy_https.sh
+  sudo ./uninstall_caddy_https.sh
+  ```
 
 ### 3. API Token Security
 - **CLI Management**:
@@ -138,13 +152,14 @@ cargo build --release --no-default-features --features server
 ## 📁 Directory Structure
 
 ```text
-├── .github/workflows/   # GitHub Actions multi-arch Release CI/CD workflow
-├── setup_caddy_https.sh # Caddy HTTPS deployment & stream optimization script
-├── src/                 # React frontend UI components & API service bridge
-├── src-tauri/           # Rust backend core, platform parsers & install_server.sh script
-├── dist/                # Production frontend bundle
-├── package.json         # Frontend dependencies & scripts
-└── vite.config.js       # Vite configuration
+├── .github/workflows/      # GitHub Actions multi-arch Release CI/CD workflow
+├── setup_caddy_https.sh    # Caddy HTTPS deployment & stream optimization script
+├── uninstall_caddy_https.sh# Caddy HTTPS reverse proxy cleanup & uninstall script
+├── src/                    # React frontend UI components & API service bridge
+├── src-tauri/              # Rust backend core, platform parsers & install_server.sh script
+├── dist/                   # Production frontend bundle
+├── package.json            # Frontend dependencies & scripts
+└── vite.config.js          # Vite configuration
 ```
 
 ---

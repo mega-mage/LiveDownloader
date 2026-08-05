@@ -65,6 +65,13 @@ npm run tauri dev
 npm run tauri build
 ```
 
+### 3. Web API 服务端模式 (Backend Server)
+```bash
+# 进入 src-tauri 目录启动本地 Web REST API 服务端 (默认端口 10730)
+cd src-tauri
+cargo run --no-default-features --features server -- --server --port 10730
+```
+
 ---
 
 ## 🐧 Linux 服务器部署 (Server 模式)
@@ -90,12 +97,19 @@ sudo systemctl status livedownloader   # 状态
 sudo systemctl enable livedownloader   # 开机自启
 ```
 
-### 2. 配置 Caddy 自动 HTTPS 反向代理
-在服务器上直接运行根目录下的脚本：
-```bash
-chmod +x setup_caddy_https.sh
-sudo ./setup_caddy_https.sh live.yourdomain.com 10730
-```
+### 2. 配置 Caddy 自动 HTTPS 反向代理与卸载
+在服务器上直接运行根目录下的 Shell 脚本：
+
+- **安装与配置 Caddy HTTPS 反代**：
+  ```bash
+  chmod +x setup_caddy_https.sh
+  sudo ./setup_caddy_https.sh live.yourdomain.com 10730
+  ```
+- **卸载与清理 Caddy HTTPS 配置**：
+  ```bash
+  chmod +x uninstall_caddy_https.sh
+  sudo ./uninstall_caddy_https.sh
+  ```
 
 ### 3. API Token 安全管理
 - **命令行查看/修改 Token**：
@@ -138,13 +152,14 @@ cargo build --release --no-default-features --features server
 ## 📁 目录结构
 
 ```text
-├── .github/workflows/   # GitHub Actions 多架构 Release CI/CD 工作流
-├── setup_caddy_https.sh # Caddy HTTPS 自动部署与流优化脚本
-├── src/                 # React 前端组件与 API 服务层
-├── src-tauri/           # Rust 后端引擎、平台解析与 install_server.sh 部署脚本
-├── dist/                # 前端打包产物
-├── package.json         # 前端依赖与脚本
-└── vite.config.js       # Vite 打包配置
+├── .github/workflows/      # GitHub Actions 多架构 Release CI/CD 工作流
+├── setup_caddy_https.sh    # Caddy HTTPS 自动部署与流优化脚本
+├── uninstall_caddy_https.sh# Caddy HTTPS 反代自动卸载与清理脚本
+├── src/                    # React 前端组件与 API 服务层
+├── src-tauri/              # Rust 后端引擎、平台解析与 install_server.sh 部署脚本
+├── dist/                   # 前端打包产物
+├── package.json            # 前端依赖与脚本
+└── vite.config.js          # Vite 打包配置
 ```
 
 ---

@@ -1,9 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import { t } from "../lib/i18n.js";
-import { Terminal, Send, Activity, ChevronRight } from "lucide-react";
+import { Terminal, ChevronRight } from "lucide-react";
+import { XtermConsole } from "./XtermConsole.jsx";
 
 // Helper to parse Rust tracing log lines
 const simplifyLog = (logLine) => {
@@ -40,14 +39,9 @@ const simplifyLog = (logLine) => {
 export function LogViewer({
   activeTab,
   logs,
-  terminalLogs,
-  cmdInput,
-  setCmdInput,
-  handleRunCommand,
   lang
 }) {
   const consoleWrapperRef = useRef(null);
-  const terminalWrapperRef = useRef(null);
 
   // Auto-scroll to bottom of logs when they update
   useEffect(() => {
@@ -56,21 +50,14 @@ export function LogViewer({
     }
   }, [logs]);
 
-  // Auto-scroll to bottom of command terminal when output updates
-  useEffect(() => {
-    if (terminalWrapperRef.current) {
-      terminalWrapperRef.current.scrollTop = terminalWrapperRef.current.scrollHeight;
-    }
-  }, [terminalLogs]);
-
   if (activeTab !== "logs") return null;
 
   return (
-    <div className="flex flex-col flex-1 h-[calc(100vh-8rem)] md:h-[calc(100vh-5rem)] border border-border bg-card/45 backdrop-blur-md rounded-xl overflow-hidden animate-slide-in">
-      {/* 1. RUNNING LOGS (60% Height) */}
-      <div className="h-[60%] flex flex-col border-b border-border">
+    <div className="flex flex-col flex-1 h-full min-h-[500px] border border-border bg-card/45 backdrop-blur-md rounded-xl overflow-hidden animate-slide-in">
+      {/* 1. RUNNING LOGS (55% Height) */}
+      <div className="h-[55%] flex flex-col border-b border-border">
         {/* Logs Header */}
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-border/50 bg-secondary/15">
+        <div className="flex items-center gap-2 px-5 py-2.5 border-b border-border/50 bg-secondary/15 shrink-0">
           <Terminal size={14} className="text-primary" />
           <h3 className="text-xs font-bold text-foreground">{t("logs_title", lang)}</h3>
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -115,61 +102,20 @@ export function LogViewer({
         </div>
       </div>
 
-      {/* 2. INTERACTIVE TERMINAL (40% Height) */}
-      <div className="h-[40%] flex flex-col bg-black/45">
+      {/* 2. INTERACTIVE XTERM.JS TERMINAL (45% Height) */}
+      <div className="h-[45%] flex flex-col bg-[#090d16]">
         {/* Terminal Header */}
-        <div className="flex items-center gap-2 px-5 py-2.5 border-b border-border/40 bg-black/20">
+        <div className="flex items-center gap-2 px-5 py-2 border-b border-border/40 bg-black/40 shrink-0">
           <ChevronRight size={14} className="text-primary" />
           <h3 className="text-xs font-bold text-primary-foreground">{t("cli_console_title", lang)}</h3>
-          <span className="text-[10px] text-muted-foreground">{t("cli_console_sub", lang)}</span>
+          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">xterm.js</span>
+          <span className="text-[10px] text-muted-foreground ml-auto">交互控制台 (支持 Tab / 方向键历史记录)</span>
         </div>
 
-        {/* Terminal logs list */}
-        <div 
-          ref={terminalWrapperRef}
-          className="flex-1 overflow-y-auto p-4 px-5 space-y-1 font-mono text-xs text-foreground/80 bg-black/20"
-        >
-          {terminalLogs.map((log, index) => {
-            const isInput = log.startsWith("ld >");
-            const isError = log.startsWith("错误") || log.startsWith("Error");
-            return (
-              <div 
-                key={index} 
-                className={cn(
-                  "break-all whitespace-pre-wrap leading-relaxed",
-                  isInput && "text-primary font-bold",
-                  isError && "text-rose-400 bg-rose-500/5 px-1 rounded"
-                )}
-              >
-                {log}
-              </div>
-            );
-          })}
+        {/* Xterm.js Console Component */}
+        <div className="flex-1 w-full relative overflow-hidden bg-[#090d16]">
+          <XtermConsole />
         </div>
-
-        {/* Terminal Command Input Form */}
-        <form 
-          onSubmit={handleRunCommand}
-          className="flex items-center gap-3 px-5 py-3 border-t border-border bg-black/35"
-        >
-          <span className="font-mono font-bold text-primary select-none text-sm shrink-0">ld &gt;</span>
-          <input
-            type="text"
-            value={cmdInput}
-            onChange={(e) => setCmdInput(e.target.value)}
-            placeholder={t("cli_input_placeholder", lang)}
-            className="flex-1 bg-transparent border-none outline-none text-foreground/90 font-mono text-xs p-0 focus:ring-0"
-          />
-          <Button 
-            type="submit"
-            size="sm"
-            variant="secondary"
-            className="h-7 text-xxs font-mono shrink-0 cursor-pointer"
-          >
-            <Send size={10} className="mr-1" />
-            {t("btn_execute", lang)}
-          </Button>
-        </form>
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ use crate::RecordedVideo;
 
 use axum::{
     Router,
-    routing::{get, post, delete},
+    routing::{get, post, put, delete},
     extract::State as AxumState,
     http::{StatusCode, HeaderMap},
     Json,
@@ -185,27 +185,43 @@ async fn api_add_room(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-#[derive(serde::Deserialize)]
-pub struct DeleteRoomRequest {
-    url: String,
+#[derive(serde::Deserialize, Default)]
+pub struct DeleteRoomQuery {
+    pub url: Option<String>,
 }
 
 async fn api_delete_room(
     state: AxumState<SharedState>,
-    Json(body): Json<DeleteRoomRequest>,
+    axum::extract::Query(query): axum::extract::Query<DeleteRoomQuery>,
+    body_bytes: axum::body::Bytes,
 ) -> impl IntoResponse {
+    let target_url = if let Some(u) = query.url.filter(|s| !s.is_empty()) {
+        u
+    } else if !body_bytes.is_empty() {
+        if let Ok(parsed) = serde_json::from_slice::<DeleteRoomQuery>(&body_bytes) {
+            match parsed.url.filter(|s| !s.is_empty()) {
+                Some(u) => u,
+                None => return Err((StatusCode::BAD_REQUEST, "Missing 'url' parameter".to_string())),
+            }
+        } else {
+            return Err((StatusCode::BAD_REQUEST, "Missing 'url' parameter".to_string()));
+        }
+    } else {
+        return Err((StatusCode::BAD_REQUEST, "Missing 'url' parameter".to_string()));
+    };
+
     let mut config = match AppConfig::load_or_create(&state.config_toml_path) {
         Ok(c) => c,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     };
-    config.rooms.retain(|r| r.url != body.url);
+    config.rooms.retain(|r| r.url != target_url);
     config.save_to_file(&state.config_toml_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     {
         let mut map = state.room_statuses.write().await;
-        map.remove(&body.url);
+        map.remove(&target_url);
     }
     state.change_notify.notify_one();
-    Ok(Json(serde_json::json!({ "ok": true })))
+    Ok::<_, (StatusCode, String)>(Json(serde_json::json!({ "ok": true })))
 }
 
 async fn api_get_config(state: AxumState<SharedState>) -> impl IntoResponse {
@@ -421,53 +437,11 @@ pub struct ExecuteCommandRequest {
 }
 
 async fn api_execute_command(
+    state: AxumState<SharedState>,
     Json(body): Json<ExecuteCommandRequest>,
 ) -> impl IntoResponse {
-    let current_exe = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
-    };
-    let parsed_args = split_arguments(&body.cmd);
-    if parsed_args.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "指令为空".to_string()));
-    }
-    let output = std::process::Command::new(current_exe)
-        .args(&parsed_args)
-        .output()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let mut result = stdout;
-    if !stderr.is_empty() {
-        if !result.is_empty() { result.push('\n'); }
-        result.push_str(&stderr);
-    }
-    Ok(Json(serde_json::json!({ "output": result })))
-}
-
-fn split_arguments(command_line: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let mut current = String::new();
-    let mut in_quotes = false;
-    let cmd_trimmed = command_line.trim();
-    let cmd_to_parse = if cmd_trimmed.starts_with("ld ") {
-        &cmd_trimmed[3..]
-    } else if cmd_trimmed.starts_with("ld.exe ") {
-        &cmd_trimmed[7..]
-    } else {
-        cmd_trimmed
-    };
-    for c in cmd_to_parse.chars() {
-        match c {
-            '"' => in_quotes = !in_quotes,
-            ' ' | '\u{3000}' if !in_quotes => {
-                if !current.is_empty() { args.push(current.clone()); current.clear(); }
-            }
-            _ => current.push(c),
-        }
-    }
-    if !current.is_empty() { args.push(current); }
-    args
+    let output = crate::cli::execute_cli_str(&state.config_toml_path, &body.cmd);
+    Json(serde_json::json!({ "output": output }))
 }
 
 #[derive(serde::Deserialize)]
@@ -598,15 +572,31 @@ async fn api_download_video(
     (headers, body).into_response()
 }
 
-#[derive(serde::Deserialize)]
-pub struct DeleteVideoRequest {
-    path: String,
+#[derive(serde::Deserialize, Default)]
+pub struct DeleteVideoQuery {
+    pub path: Option<String>,
 }
 
 async fn api_delete_video(
     state: AxumState<SharedState>,
-    Json(body): Json<DeleteVideoRequest>,
+    axum::extract::Query(query): axum::extract::Query<DeleteVideoQuery>,
+    body_bytes: axum::body::Bytes,
 ) -> impl IntoResponse {
+    let target_path_str = if let Some(p) = query.path.filter(|s| !s.is_empty()) {
+        p
+    } else if !body_bytes.is_empty() {
+        if let Ok(parsed) = serde_json::from_slice::<DeleteVideoQuery>(&body_bytes) {
+            match parsed.path.filter(|s| !s.is_empty()) {
+                Some(p) => p,
+                None => return Err((StatusCode::BAD_REQUEST, "Missing 'path' parameter".to_string())),
+            }
+        } else {
+            return Err((StatusCode::BAD_REQUEST, "Missing 'path' parameter".to_string()));
+        }
+    } else {
+        return Err((StatusCode::BAD_REQUEST, "Missing 'path' parameter".to_string()));
+    };
+
     let config = match AppConfig::load_or_create(&state.config_toml_path) {
         Ok(c) => c,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
@@ -618,7 +608,7 @@ async fn api_delete_video(
         Ok(p) => p,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to canonicalize save path: {}", e))),
     };
-    let file_path = std::path::Path::new(&body.path);
+    let file_path = std::path::Path::new(&target_path_str);
     let target_path = match std::fs::canonicalize(file_path) {
         Ok(p) => p,
         Err(e) => return Err((StatusCode::NOT_FOUND, format!("File not found: {}", e))),
@@ -639,24 +629,40 @@ fn bind_listener(port: u16) -> Result<std::net::TcpListener, Box<dyn std::error:
     use std::net::SocketAddr;
 
     // 1. Try to bind to IPv6 wildcard [::] with only_v6=false (dual-stack)
-    let ipv6_addr: SocketAddr = format!("[::]:{}", port).parse()?;
-    let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP));
-    
-    if let Ok(sock) = socket {
-        let _ = sock.set_reuse_address(true);
-        if sock.set_only_v6(false).is_ok() && sock.bind(&ipv6_addr.into()).is_ok() && sock.listen(1024).is_ok() {
-            info!("Successfully bound dual-stack listener to [::]:{}", port);
-            return Ok(sock.into());
+    if let Ok(ipv6_addr) = format!("[::]:{}", port).parse::<SocketAddr>() {
+        if let Ok(sock) = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP)) {
+            let _ = sock.set_reuse_address(true);
+            if sock.set_only_v6(false).is_ok() && sock.bind(&ipv6_addr.into()).is_ok() && sock.listen(1024).is_ok() {
+                info!("Successfully bound dual-stack listener to [::]:{}", port);
+                return Ok(sock.into());
+            }
         }
     }
 
     // 2. Fallback to IPv4 wildcard 0.0.0.0
-    let ipv4_addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
+    if let Ok(ipv4_addr) = format!("0.0.0.0:{}", port).parse::<SocketAddr>() {
+        if let Ok(socket) = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)) {
+            let _ = socket.set_reuse_address(true);
+            if socket.bind(&ipv4_addr.into()).is_ok() && socket.listen(1024).is_ok() {
+                info!("IPv6 dual-stack bind failed, fell back to IPv4 wildcard 0.0.0.0:{}", port);
+                return Ok(socket.into());
+            }
+        }
+    }
+
+    // 3. Fallback to IPv4 localhost 127.0.0.1
+    let local_addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
     let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
     let _ = socket.set_reuse_address(true);
-    socket.bind(&ipv4_addr.into())?;
+    if let Err(e) = socket.bind(&local_addr.into()) {
+        eprintln!("\n[错误] 端口 {} 绑定失败 ({})。", port, e);
+        eprintln!("[原因] 端口 {} 属于 Windows 系统 Hyper-V / WSL2 动态保留排除端口段，或已被其他程序占用。", port);
+        eprintln!("[解决方法] 请换用其他未被保留的端口重新运行，例如:");
+        eprintln!("  cargo run --no-default-features --features server -- --port 10830\n");
+        return Err(Box::new(e));
+    }
     socket.listen(1024)?;
-    info!("IPv6 dual-stack bind failed, fell back to IPv4 wildcard 0.0.0.0:{}", port);
+    info!("Wildcard binds failed, fell back to IPv4 localhost 127.0.0.1:{}", port);
     Ok(socket.into())
 }
 
@@ -808,23 +814,30 @@ pub async fn start_server(state: Arc<AppState>, port: u16) -> Result<(), Box<dyn
     let app = Router::new()
         .merge(Router::new()
             .route("/proxy", get(api_proxy))
-            .route("/api/video/download", get(api_download_video))
-            .route("/api/rooms", get(api_get_rooms))
-            .route("/api/room", post(api_add_room))
-            .route("/api/room", delete(api_delete_room))
-            .route("/api/config", get(api_get_config))
-            .route("/api/config", post(api_save_config))
+            // --- Standard REST API Endpoints ---
+            .route("/api/rooms", get(api_get_rooms).post(api_add_room).delete(api_delete_room))
+            .route("/api/rooms/config", put(api_update_room_config))
+            .route("/api/rooms/toggle", put(api_toggle_room_paused))
+            .route("/api/config", get(api_get_config).put(api_save_config).post(api_save_config))
+            .route("/api/cookies", post(api_save_cookie))
+            .route("/api/engine/status", get(api_get_engine_status).put(api_toggle_engine))
+            .route("/api/videos", get(api_get_recorded_videos).delete(api_delete_video))
+            .route("/api/videos/download-link", post(api_get_download_link))
+            .route("/api/videos/download", get(api_download_video))
+            .route("/api/commands/execute", post(api_execute_command))
             .route("/api/logs", get(api_get_logs))
             .route("/api/proxy-port", get(api_get_proxy_port))
-            .route("/api/engine/toggle", post(api_toggle_engine))
-            .route("/api/engine/status", get(api_get_engine_status))
-            .route("/api/videos", get(api_get_recorded_videos))
-            .route("/api/cookie", post(api_save_cookie))
+
+            // --- Legacy Backward-Compatibility Aliases ---
+            .route("/api/room", post(api_add_room).delete(api_delete_room))
             .route("/api/room/config", post(api_update_room_config))
             .route("/api/room/toggle", post(api_toggle_room_paused))
-            .route("/api/command", post(api_execute_command))
-            .route("/api/video/download-link", post(api_get_download_link))
+            .route("/api/cookie", post(api_save_cookie))
+            .route("/api/engine/toggle", post(api_toggle_engine))
             .route("/api/video", delete(api_delete_video))
+            .route("/api/video/download-link", post(api_get_download_link))
+            .route("/api/video/download", get(api_download_video))
+            .route("/api/command", post(api_execute_command))
             .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         )
         .layer(cors)
@@ -837,4 +850,92 @@ pub async fn start_server(state: Arc<AppState>, port: u16) -> Result<(), Box<dyn
     info!("LiveDownloader Web API server starting on dual-stack IPv4/IPv6 port {}", port);
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use tokio::sync::{RwLock, Notify};
+    use std::sync::atomic::AtomicBool;
+
+    fn create_test_state() -> Arc<AppState> {
+        let temp_dir = std::env::temp_dir().join(format!("ld_test_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let config_toml_path = temp_dir.join("config.toml");
+        
+        let mut config = AppConfig::default();
+        config.settings.save_path = temp_dir.join("downloads");
+        let _ = config.save_to_file(&config_toml_path);
+
+        Arc::new(AppState {
+            room_statuses: Arc::new(RwLock::new(HashMap::new())),
+            config_toml_path,
+            is_paused: Arc::new(AtomicBool::new(false)),
+            change_notify: Arc::new(Notify::new()),
+            proxy_port: 10731,
+        })
+    }
+
+    #[tokio::test]
+    async fn test_rest_rooms_api() {
+        let state = create_test_state();
+
+        // 1. Add Room (POST /api/rooms)
+        let req = AddRoomRequest {
+            url: "https://live.bilibili.com/123456".to_string(),
+            name: Some("TestAnchor".to_string()),
+            quality: Some("原画".to_string()),
+            split_mode: None,
+            split_custom_secs: None,
+        };
+        let res = api_add_room(AxumState(state.clone()), Json(req)).await.into_response();
+        assert_eq!(res.status(), StatusCode::OK);
+
+        // 2. Get Rooms (GET /api/rooms)
+        let rooms_res = api_get_rooms(AxumState(state.clone())).await.into_response();
+        assert_eq!(rooms_res.status(), StatusCode::OK);
+
+        // 3. Delete Room via Query (DELETE /api/rooms?url=...)
+        let del_res = api_delete_room(
+            AxumState(state.clone()),
+            axum::extract::Query(DeleteRoomQuery {
+                url: Some("https://live.bilibili.com/123456".to_string()),
+            }),
+            axum::body::Bytes::new(),
+        ).await.into_response();
+        assert_eq!(del_res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_rest_config_and_engine_api() {
+        let state = create_test_state();
+
+        // Get Config
+        let cfg_res = api_get_config(AxumState(state.clone())).await.into_response();
+        assert_eq!(cfg_res.status(), StatusCode::OK);
+
+        // Toggle Engine Status (PUT /api/engine/status)
+        let toggle_res = api_toggle_engine(
+            AxumState(state.clone()),
+            Json(ToggleEngineRequest { paused: true }),
+        ).await.into_response();
+        assert_eq!(toggle_res.status(), StatusCode::OK);
+
+        let status_res = api_get_engine_status(AxumState(state.clone())).await.into_response();
+        assert_eq!(status_res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_rest_cookie_api() {
+        let state = create_test_state();
+        let cookie_res = api_save_cookie(
+            AxumState(state.clone()),
+            Json(SaveCookieRequest {
+                platform: "bilibili".to_string(),
+                value: "SESSDATA=test_value".to_string(),
+            }),
+        ).await.into_response();
+        assert_eq!(cookie_res.status(), StatusCode::OK);
+    }
 }

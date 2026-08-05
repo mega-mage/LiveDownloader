@@ -73,7 +73,7 @@ export async function getRooms() {
 
 export async function addRoom(url, name, quality, splitMode, splitCustomSecs) {
   if (isTauri()) return tauriInvoke("add_room", { url, name, quality, split_mode: splitMode, split_custom_secs: splitCustomSecs ? Number(splitCustomSecs) : null });
-  return apiFetch("/api/room", {
+  return apiFetch("/api/rooms", {
     method: "POST",
     body: JSON.stringify({ url, name, quality, split_mode: splitMode, split_custom_secs: splitCustomSecs ? Number(splitCustomSecs) : null }),
   });
@@ -81,9 +81,8 @@ export async function addRoom(url, name, quality, splitMode, splitCustomSecs) {
 
 export async function deleteRoom(url) {
   if (isTauri()) return tauriInvoke("delete_room", { url });
-  return apiFetch("/api/room", {
+  return apiFetch(`/api/rooms?url=${encodeURIComponent(url)}`, {
     method: "DELETE",
-    body: JSON.stringify({ url }),
   });
 }
 
@@ -95,7 +94,7 @@ export async function getConfig() {
 export async function saveConfig(newConfig) {
   if (isTauri()) return tauriInvoke("save_config", { newConfig });
   return apiFetch("/api/config", {
-    method: "POST",
+    method: "PUT",
     body: JSON.stringify(newConfig),
   });
 }
@@ -112,8 +111,8 @@ export async function getProxyPort() {
 
 export async function toggleEngineStatus(paused) {
   if (isTauri()) return tauriInvoke("toggle_engine_status", { paused });
-  return apiFetch("/api/engine/toggle", {
-    method: "POST",
+  return apiFetch("/api/engine/status", {
+    method: "PUT",
     body: JSON.stringify({ paused }),
   });
 }
@@ -136,15 +135,15 @@ export async function openRecordedFolder(path) {
 
 export async function toggleRoomPaused(url, paused) {
   if (isTauri()) return tauriInvoke("toggle_room_paused", { url, paused });
-  return apiFetch("/api/room/toggle", {
-    method: "POST",
+  return apiFetch("/api/rooms/toggle", {
+    method: "PUT",
     body: JSON.stringify({ url, paused }),
   });
 }
 
 export async function saveCookie(platform, value) {
   if (isTauri()) return tauriInvoke("save_cookie", { platform, value });
-  return apiFetch("/api/cookie", {
+  return apiFetch("/api/cookies", {
     method: "POST",
     body: JSON.stringify({ platform, value }),
   });
@@ -160,8 +159,8 @@ export async function updateRoomConfig(url, name, quality, videoSaveType, splitM
       split_mode: splitMode,
       split_custom_secs: splitCustomSecs ? Number(splitCustomSecs) : null,
     });
-  return apiFetch("/api/room/config", {
-    method: "POST",
+  return apiFetch("/api/rooms/config", {
+    method: "PUT",
     body: JSON.stringify({
       url,
       name,
@@ -175,7 +174,7 @@ export async function updateRoomConfig(url, name, quality, videoSaveType, splitM
 
 export async function executeLdCommand(cmd) {
   if (isTauri()) return tauriInvoke("execute_ld_command", { cmd });
-  const res = await apiFetch("/api/command", {
+  const res = await apiFetch("/api/commands/execute", {
     method: "POST",
     body: JSON.stringify({ cmd }),
   });
@@ -186,7 +185,7 @@ export async function getDownloadLink(path) {
   if (isTauri()) {
     throw new Error("Tauri mode doesn't need signed download links");
   }
-  const res = await apiFetch("/api/video/download-link", {
+  const res = await apiFetch("/api/videos/download-link", {
     method: "POST",
     body: JSON.stringify({ path }),
   });
@@ -197,9 +196,8 @@ export async function getDownloadLink(path) {
 
 export async function deleteVideoFile(path) {
   if (isTauri()) return tauriInvoke("delete_video_file", { path });
-  return apiFetch("/api/video", {
+  return apiFetch(`/api/videos?path=${encodeURIComponent(path)}`, {
     method: "DELETE",
-    body: JSON.stringify({ path }),
   });
 }
 
