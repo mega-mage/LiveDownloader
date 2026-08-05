@@ -380,11 +380,14 @@ tg_auto_upload = false
 
 [[rooms]]
 EOF
-    elif is_termux; then
-        local sp_val="${TERMUX_SAVE_PATH:-/sdcard/Download}"
+    else
+        default_sp="${HOME}/downloads"
+        if is_termux; then
+            default_sp="${TERMUX_SAVE_PATH:-/sdcard/Download}"
+        fi
         if grep -q 'save_path = ""' "$CONFIG_FILE" 2>/dev/null || grep -q 'save_path = "\./downloads"' "$CONFIG_FILE" 2>/dev/null; then
-            log_info "自动修正/升级配置：将保存路径调整为手机公共下载文件夹 (${sp_val})..."
-            sed -i "s|save_path = \".*\"|save_path = \"${sp_val}\"|" "$CONFIG_FILE" || true
+            log_info "自动修正/升级配置：将保存路径调整为默认下载文件夹 (${default_sp})..."
+            sed -i "s|save_path = \".*\"|save_path = \"${default_sp}\"|" "$CONFIG_FILE" || true
         fi
     fi
 
@@ -577,14 +580,9 @@ do_uninstall() {
     log_info "删除二进制文件与快捷链接..."
     rm -f "$DEST_BIN" "$DEST_ALIAS"
 
-    log_warn "是否要清理数据和配置目录 (${WORK_DIR})？"
-    read -p "请输入 [y/N] (默认保留数据): " clean_data
-    if [[ "$clean_data" == "y" || "$clean_data" == "Y" ]]; then
-        rm -rf "$WORK_DIR"
-        log_info "已清理工作目录 ${WORK_DIR}。"
-    else
-        log_info "已保留工作目录 ${WORK_DIR} 中的配置与视频数据。"
-    fi
+    log_info "清理配置文件与工作目录 (${WORK_DIR})..."
+    rm -rf "$WORK_DIR"
+    log_success "已彻底删除配置文件及工作目录！"
 
     log_success "===================================================="
     log_success "  LiveDownloader 卸载完成！"
