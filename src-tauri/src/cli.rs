@@ -18,12 +18,14 @@ mod win_console {
 }
 
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 pub fn prompt_overwrite(platform: &str) -> bool {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
 
     #[link(name = "user32")]
     unsafe extern "system" {
+        #[allow(dead_code)]
         fn MessageBoxW(
             hWnd: *mut std::ffi::c_void,
             lpText: *const u16,
