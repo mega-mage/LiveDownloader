@@ -81,7 +81,10 @@ fn init_core(config_toml_path: &Path) -> Result<(
     Arc<std::sync::atomic::AtomicBool>,
     Arc<tokio::sync::RwLock<HashMap<String, RoomStatus>>>,
 ), Box<dyn std::error::Error + Send + Sync>> {
-    let is_paused = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let initial_paused = AppConfig::load_or_create(config_toml_path)
+        .map(|c| c.settings.engine_paused)
+        .unwrap_or(false);
+    let is_paused = Arc::new(std::sync::atomic::AtomicBool::new(initial_paused));
     let manager = TaskManager::new(config_toml_path, is_paused.clone())?;
     let room_statuses = manager.room_statuses.clone();
 

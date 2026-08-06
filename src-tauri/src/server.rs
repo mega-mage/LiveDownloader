@@ -276,6 +276,11 @@ async fn api_toggle_engine(
 ) -> impl IntoResponse {
     state.is_paused.store(body.paused, std::sync::atomic::Ordering::SeqCst);
 
+    if let Ok(mut config) = AppConfig::load_or_create(&state.config_toml_path) {
+        config.settings.engine_paused = body.paused;
+        let _ = config.save_to_file(&state.config_toml_path);
+    }
+
     {
         let mut map = state.room_statuses.write().await;
         if body.paused {

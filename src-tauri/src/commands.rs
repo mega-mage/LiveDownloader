@@ -308,6 +308,11 @@ pub async fn toggle_engine_status(paused: bool, state: State<'_, AppState>) -> R
         .is_paused
         .store(paused, std::sync::atomic::Ordering::SeqCst);
 
+    if let Ok(mut config) = AppConfig::load_or_create(&state.config_toml_path) {
+        config.settings.engine_paused = paused;
+        let _ = config.save_to_file(&state.config_toml_path);
+    }
+
     {
         let mut map = state.room_statuses.write().await;
         if paused {

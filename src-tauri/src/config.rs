@@ -65,6 +65,9 @@ pub struct SettingsConfig {
     pub save_path: PathBuf,
 
     #[serde(default = "default_false")]
+    pub engine_paused: bool,
+
+    #[serde(default = "default_false")]
     pub folder_by_author: bool,
 
     #[serde(default = "default_false")]
@@ -163,6 +166,7 @@ impl Default for AppConfig {
             settings: SettingsConfig {
                 language: default_language(),
                 save_path: default_save_path(),
+                engine_paused: false,
                 folder_by_author: false,
                 folder_by_time: false,
                 folder_by_title: false,
@@ -457,6 +461,7 @@ impl AppConfig {
             settings: SettingsConfig {
                 language,
                 save_path,
+                engine_paused: false,
                 folder_by_author,
                 folder_by_time,
                 folder_by_title,
