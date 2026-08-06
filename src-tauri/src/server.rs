@@ -668,9 +668,10 @@ fn bind_listener(port: u16) -> Result<std::net::TcpListener, Box<dyn std::error:
     let _ = socket.set_reuse_address(true);
     if let Err(e) = socket.bind(&local_addr.into()) {
         eprintln!("\n[错误] 端口 {} 绑定失败 ({})。", port, e);
-        eprintln!("[原因] 端口 {} 属于 Windows 系统 Hyper-V / WSL2 动态保留排除端口段，或已被其他程序占用。", port);
-        eprintln!("[解决方法] 请换用其他未被保留的端口重新运行，例如:");
-        eprintln!("  cargo run --no-default-features --features server -- --port 10830\n");
+        eprintln!("[原因] 端口 {} 已被已在后台运行的 LiveDownloader 服务或其他程序占用。", port);
+        eprintln!("[提示] 如果要使用 CLI 命令行工具，请直接运行: livedownloader help / ld ls / ld add <URL>");
+        eprintln!("[解决方法] 若需在另一个端口启动独立 Web 服务端，请指定 --port 参数，例如:");
+        eprintln!("  livedownloader --server --port 10830\n");
         return Err(Box::new(e));
     }
     socket.listen(1024)?;

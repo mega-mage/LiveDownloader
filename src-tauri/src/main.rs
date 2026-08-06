@@ -253,7 +253,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (config_toml_path, _) = get_config_paths();
 
     let args: Vec<String> = std::env::args().collect();
-    let is_server_mode = args.iter().any(|a| a == "--server") || (!cfg!(feature = "gui") && cfg!(feature = "server"));
+
+    let has_cli_subcommand = args.iter().skip(1).any(|a| {
+        !a.starts_with("--server")
+            && !a.starts_with("--port")
+            && !a.starts_with("--token")
+            && !a.starts_with("--api-token")
+            && a.parse::<u16>().is_err()
+    });
+
+    let is_server_mode = args.iter().any(|a| a == "--server")
+        || (!has_cli_subcommand && !cfg!(feature = "gui") && cfg!(feature = "server"));
 
     let _port = args.iter().position(|a| a == "--port")
         .and_then(|i| args.get(i + 1))
@@ -276,11 +286,19 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 println!("已成功保存 API Token: {}", token_val.trim());
             }
             config.save_to_file(&config_toml_path)?;
-            // If only setting token without --server flag, exit after saving
-            if !is_server_mode && args.len() <= 3 {
+            if !is_server_mode {
                 return Ok(());
             }
         }
+    }
+
+    // CLI execution: if CLI subcommand (like help, ls, rooms, add) is supplied without --server flag, execute CLI and exit
+    if has_cli_subcommand && !args.iter().any(|a| a == "--server") {
+        if let Err(e) = cli::run_cli_commands(&config_toml_path) {
+            eprintln!("CLI execution error: {}", e);
+            std::process::exit(1);
+        }
+        std::process::exit(0);
     }
 
     if is_server_mode {
@@ -298,18 +316,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             eprintln!("  cargo build --no-default-features --features server");
             std::process::exit(1);
         }
-    }
-
-    // CLI mode: filter out --server/--port/--token flags
-    let has_cli_args = args.iter().skip(1)
-        .any(|a| a != "--server" && a != "--port" && a != "--token" && a != "--api-token" && !a.parse::<u16>().is_ok());
-
-    if has_cli_args && !is_server_mode {
-        if let Err(e) = cli::run_cli_commands(&config_toml_path) {
-            eprintln!("CLI execution error: {}", e);
-            std::process::exit(1);
-        }
-        std::process::exit(0);
     }
 
     // GUI Mode
