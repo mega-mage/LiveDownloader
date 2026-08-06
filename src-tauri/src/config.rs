@@ -201,38 +201,6 @@ impl Default for AppConfig {
 }
 
 pub fn get_config_paths() -> (PathBuf, PathBuf) {
-    // 1. Current working directory config.toml
-    if std::path::Path::new("config.toml").exists() {
-        if let Ok(p) = std::fs::canonicalize("config.toml") {
-            return (p.clone(), p);
-        }
-        let p = PathBuf::from("./config.toml");
-        return (p.clone(), p);
-    }
-
-    // 2. ~/.livedownloader/config.toml (User home directory)
-    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-        let home_config = PathBuf::from(home).join(".livedownloader").join("config.toml");
-        if home_config.exists() {
-            return (home_config.clone(), home_config);
-        }
-    }
-
-    // 3. /var/lib/livedownloader/config.toml (Linux system daemon default)
-    let var_lib_config = PathBuf::from("/var/lib/livedownloader/config.toml");
-    if var_lib_config.exists() {
-        return (var_lib_config.clone(), var_lib_config);
-    }
-
-    // 4. BaseDirs config directory (~/.config/LiveDownloader/config.toml or AppData/Roaming/LiveDownloader/config.toml)
-    if let Some(base_dirs) = directories::BaseDirs::new() {
-        let base_config = base_dirs.config_dir().join("LiveDownloader").join("config.toml");
-        if base_config.exists() {
-            return (base_config.clone(), base_config);
-        }
-    }
-
-    // Default to ~/.livedownloader/config.toml if no existing config.toml file was found anywhere
     let home_dir = directories::BaseDirs::new()
         .map(|b| b.home_dir().to_path_buf())
         .or_else(|| std::env::var("HOME").ok().map(PathBuf::from))
