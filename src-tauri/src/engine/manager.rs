@@ -624,9 +624,12 @@ async fn save_room_statuses(statuses: &Arc<RwLock<HashMap<String, RoomStatus>>>)
     let (config_path, _) = crate::config::get_config_paths();
     if let Some(parent) = config_path.parent() {
         let status_path = parent.join("statuses.json");
+        let tmp_status_path = parent.join("statuses.json.tmp");
         let statuses_map = statuses.read().await;
         if let Ok(json_str) = serde_json::to_string_pretty(&*statuses_map) {
-            let _ = fs::write(status_path, json_str);
+            if fs::write(&tmp_status_path, json_str).is_ok() {
+                let _ = fs::rename(&tmp_status_path, &status_path);
+            }
         }
     }
 }

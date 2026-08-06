@@ -10,63 +10,72 @@ use tracing::{info, debug};
 
 #[tauri::command]
 pub async fn get_rooms(state: State<'_, AppState>) -> Result<Vec<RoomStatus>, String> {
-    let config = AppConfig::load_or_create(&state.config_toml_path).map_err(|e| e.to_string())?;
     let map = state.room_statuses.read().await;
-
     let mut result = Vec::new();
-    for r in config.rooms {
-        if r.is_commented {
-            let (anchor, title, platform, auto_dur) = if let Some(existing) = map.get(&r.url) {
-                (
-                    if existing.anchor_name.is_empty() || existing.anchor_name == "未知主播" {
-                        r.name.clone().unwrap_or_else(|| "未知主播".to_string())
-                    } else {
-                        existing.anchor_name.clone()
-                    },
-                    existing.title.clone(),
-                    existing.platform.clone(),
-                    existing.current_auto_duration_secs,
-                )
-            } else {
-                (
-                    r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
-                    "".to_string(),
-                    "".to_string(),
-                    None,
-                )
-            };
 
-            result.push(RoomStatus {
-                url: r.url.clone(),
-                title,
-                anchor_name: anchor,
-                status: "Paused".to_string(),
-                record_path: None,
-                live_url: None,
-                platform,
-                split_mode: r.split_mode.clone(),
-                split_custom_secs: r.split_custom_secs,
-                current_auto_duration_secs: auto_dur,
-            });
-        } else if let Some(status) = map.get(&r.url) {
-            let mut status_clone = status.clone();
-            status_clone.split_mode = r.split_mode.clone();
-            status_clone.split_custom_secs = r.split_custom_secs;
-            result.push(status_clone);
-        } else {
-            result.push(RoomStatus {
-                url: r.url.clone(),
-                title: "".to_string(),
-                anchor_name: r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
-                status: "Idle".to_string(),
-                record_path: None,
-                live_url: None,
-                platform: "".to_string(),
-                split_mode: r.split_mode.clone(),
-                split_custom_secs: r.split_custom_secs,
-                current_auto_duration_secs: None,
-            });
+    if let Ok(config) = AppConfig::load_or_create(&state.config_toml_path) {
+        if !config.rooms.is_empty() || map.is_empty() {
+            for r in config.rooms {
+                if r.is_commented {
+                    let (anchor, title, platform, auto_dur) = if let Some(existing) = map.get(&r.url) {
+                        (
+                            if existing.anchor_name.is_empty() || existing.anchor_name == "未知主播" {
+                                r.name.clone().unwrap_or_else(|| "未知主播".to_string())
+                            } else {
+                                existing.anchor_name.clone()
+                            },
+                            existing.title.clone(),
+                            existing.platform.clone(),
+                            existing.current_auto_duration_secs,
+                        )
+                    } else {
+                        (
+                            r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
+                            "".to_string(),
+                            "".to_string(),
+                            None,
+                        )
+                    };
+
+                    result.push(RoomStatus {
+                        url: r.url.clone(),
+                        title,
+                        anchor_name: anchor,
+                        status: "Paused".to_string(),
+                        record_path: None,
+                        live_url: None,
+                        platform,
+                        split_mode: r.split_mode.clone(),
+                        split_custom_secs: r.split_custom_secs,
+                        current_auto_duration_secs: auto_dur,
+                    });
+                } else if let Some(status) = map.get(&r.url) {
+                    let mut status_clone = status.clone();
+                    status_clone.split_mode = r.split_mode.clone();
+                    status_clone.split_custom_secs = r.split_custom_secs;
+                    result.push(status_clone);
+                } else {
+                    result.push(RoomStatus {
+                        url: r.url.clone(),
+                        title: "".to_string(),
+                        anchor_name: r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
+                        status: "Idle".to_string(),
+                        record_path: None,
+                        live_url: None,
+                        platform: "".to_string(),
+                        split_mode: r.split_mode.clone(),
+                        split_custom_secs: r.split_custom_secs,
+                        current_auto_duration_secs: None,
+                    });
+                }
+            }
+            return Ok(result);
         }
+    }
+
+    // Fallback: If config file read fails or returned 0 rooms while map has items, return memory statuses!
+    for status in map.values() {
+        result.push(status.clone());
     }
     Ok(result)
 }

@@ -312,6 +312,9 @@ impl AppConfig {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let path = path.as_ref();
         let toml_str = std::fs::read_to_string(path)?;
+        if toml_str.trim().is_empty() {
+            return Err("Configuration file is empty or currently being updated".into());
+        }
         let mut config: AppConfig = toml::from_str(&toml_str)?;
 
         if config.settings.save_path.as_os_str().is_empty() {
@@ -342,7 +345,9 @@ impl AppConfig {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, toml_str)?;
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, toml_str)?;
+        std::fs::rename(&tmp_path, path)?;
         Ok(())
     }
 
