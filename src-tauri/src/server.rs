@@ -259,31 +259,64 @@ async fn api_get_config(state: AxumState<SharedState>) -> impl IntoResponse {
 
 async fn api_save_config(
     state: AxumState<SharedState>,
-    Json(mut new_config): Json<AppConfig>,
+    Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    if new_config.rooms.is_empty() {
-        if let Ok(existing) = AppConfig::load_or_create(&state.config_toml_path) {
-            if !existing.rooms.is_empty() {
-                new_config.rooms = existing.rooms;
-            }
+    let mut config = AppConfig::load_or_create(&state.config_toml_path)
+        .unwrap_or_default();
+
+    if let Some(settings_val) = payload.get("settings") {
+        if let Ok(new_settings) = serde_json::from_value::<crate::config::SettingsConfig>(settings_val.clone()) {
+            config.settings = new_settings;
         }
-        if new_config.rooms.is_empty() {
-            let map = state.room_statuses.read().await;
-            for room in map.values() {
-                new_config.rooms.push(crate::config::LiveUrlConfig {
-                    url: room.url.clone(),
-                    name: if room.anchor_name.is_empty() { None } else { Some(room.anchor_name.clone()) },
-                    quality: None,
-                    video_save_type: None,
-                    is_commented: false,
-                    split_mode: room.split_mode.clone(),
-                    split_custom_secs: room.split_custom_secs,
-                });
+    }
+
+    if let Some(push_val) = payload.get("push") {
+        if let Ok(new_push) = serde_json::from_value::<crate::config::PushConfig>(push_val.clone()) {
+            config.push = new_push;
+        }
+    }
+
+    if let Some(cookies_val) = payload.get("cookies") {
+        if let Ok(new_cookies) = serde_json::from_value::<std::collections::HashMap<String, String>>(cookies_val.clone()) {
+            config.cookies = new_cookies;
+        }
+    }
+
+    if let Some(rooms_val) = payload.get("rooms") {
+        if let Ok(new_rooms) = serde_json::from_value::<Vec<crate::config::LiveUrlConfig>>(rooms_val.clone()) {
+            if !new_rooms.is_empty() {
+                config.rooms = new_rooms;
             }
         }
     }
 
-    new_config.save_to_file(&state.config_toml_path)
+    config.save_to_file(&state.config_toml_path)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    state.change_notify.notify_one();
+    Ok::<_, (StatusCode, String)>(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn api_update_settings(
+    state: AxumState<SharedState>,
+    Json(new_settings): Json<crate::config::SettingsConfig>,
+) -> impl IntoResponse {
+    let mut config = AppConfig::load_or_create(&state.config_toml_path)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    config.settings = new_settings;
+    config.save_to_file(&state.config_toml_path)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    state.change_notify.notify_one();
+    Ok::<_, (StatusCode, String)>(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn api_update_push(
+    state: AxumState<SharedState>,
+    Json(new_push): Json<crate::config::PushConfig>,
+) -> impl IntoResponse {
+    let mut config = AppConfig::load_or_create(&state.config_toml_path)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    config.push = new_push;
+    config.save_to_file(&state.config_toml_path)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     state.change_notify.notify_one();
     Ok::<_, (StatusCode, String)>(Json(serde_json::json!({ "ok": true })))
@@ -873,6 +906,8 @@ pub async fn start_server(state: Arc<AppState>, port: u16) -> Result<(), Box<dyn
             .route("/api/rooms/config", put(api_update_room_config))
             .route("/api/rooms/toggle", put(api_toggle_room_paused))
             .route("/api/config", get(api_get_config).put(api_save_config).post(api_save_config))
+            .route("/api/config/settings", put(api_update_settings).post(api_update_settings))
+            .route("/api/config/push", put(api_update_push).post(api_update_push))
             .route("/api/cookies", post(api_save_cookie))
             .route("/api/engine/status", get(api_get_engine_status).put(api_toggle_engine))
             .route("/api/videos", get(api_get_recorded_videos).delete(api_delete_video))
