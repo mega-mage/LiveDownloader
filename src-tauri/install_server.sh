@@ -278,15 +278,23 @@ start_daemon_process() {
         log_warn "LiveDownloader 服务已在运行中 (PID: $(cat "$PID_FILE"))"
         return 0
     fi
-    log_info "正在后台启动 LiveDownloader (端口: ${port})..."
+    log_info "正在后台启动 LiveDownloader (用户: ${REAL_USER}, 端口: ${port})..."
+    mkdir -p "$WORK_DIR"
+    chown -R "${REAL_USER}" "$WORK_DIR" 2>/dev/null || true
+
     cd "$WORK_DIR"
-    nohup "$DEST_BIN" --server --port "$port" > "$LOG_FILE" 2>&1 &
+    if [ "$(whoami)" = "root" ] && [ -n "${REAL_USER}" ] && [ "${REAL_USER}" != "root" ]; then
+        su - "${REAL_USER}" -c "cd '$WORK_DIR' && nohup '$DEST_BIN' --server --port '$port' > '$LOG_FILE' 2>&1 &"
+    else
+        nohup "$DEST_BIN" --server --port "$port" > "$LOG_FILE" 2>&1 &
+    fi
     local new_pid=$!
     echo "$new_pid" > "$PID_FILE"
     echo "$port" > "$PORT_FILE"
+    chown "${REAL_USER}" "$PID_FILE" "$PORT_FILE" 2>/dev/null || true
     sleep 1
-    if kill -0 "$new_pid" 2>/dev/null; then
-        log_success "服务已在后台成功启动！PID: ${new_pid}"
+    if kill -0 "$new_pid" 2>/dev/null || pgrep -u "${REAL_USER}" -f "livedownloader.*--server" >/dev/null; then
+        log_success "服务已以用户 [${REAL_USER}] 身份在后台成功启动！"
     else
         log_error "服务启动失败，请检查日志: ${LOG_FILE}"
         if [ -f "$LOG_FILE" ]; then
@@ -406,6 +414,7 @@ EOF
         fi
     fi
 
+    chown -R "${REAL_USER}" "$WORK_DIR" 2>/dev/null || true
     install -m 755 "$FOUND_BIN" "$DEST_BIN"
     ln -sf "$DEST_BIN" "$DEST_ALIAS"
 
