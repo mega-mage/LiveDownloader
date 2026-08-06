@@ -201,16 +201,17 @@ export function RoomSection({
                         variant="outline"
                         className="h-8 px-2.5 text-xs animate-none"
                         onClick={() => {
-                          const matchedRoom = config?.rooms?.find(r => r.url === room.url);
+                          const cleanUrl = (u) => u ? u.replace(/\/+$/, "") : "";
+                          const matchedConfig = config?.rooms?.find(r => cleanUrl(r.url) === cleanUrl(room.url));
                           setRoomConfigModal({
                             show: true,
                             url: room.url,
                             anchorName: room.anchor_name,
-                            name: matchedRoom?.name || "",
-                            quality: matchedRoom?.quality || "",
-                            videoSaveType: matchedRoom?.video_save_type || "",
-                            splitMode: matchedRoom?.split_mode || "auto",
-                            splitCustomSecs: matchedRoom?.split_custom_secs || ""
+                            name: matchedConfig?.name || room.name || "",
+                            quality: matchedConfig?.quality || room.quality || "",
+                            videoSaveType: matchedConfig?.video_save_type || room.video_save_type || "",
+                            splitMode: matchedConfig?.split_mode || room.split_mode || "auto",
+                            splitCustomSecs: matchedConfig?.split_custom_secs || room.split_custom_secs || ""
                           });
                         }}
                       >
@@ -305,16 +306,17 @@ export function RoomSection({
                     variant="outline"
                     className="h-8 px-2 text-xs"
                     onClick={() => {
-                      const matchedRoom = config?.rooms?.find(r => r.url === room.url);
+                      const cleanUrl = (u) => u ? u.replace(/\/+$/, "") : "";
+                      const matchedConfig = config?.rooms?.find(r => cleanUrl(r.url) === cleanUrl(room.url));
                       setRoomConfigModal({
                         show: true,
                         url: room.url,
                         anchorName: room.anchor_name,
-                        name: matchedRoom?.name || "",
-                        quality: matchedRoom?.quality || "",
-                        videoSaveType: matchedRoom?.video_save_type || "",
-                        splitMode: matchedRoom?.split_mode || "auto",
-                        splitCustomSecs: matchedRoom?.split_custom_secs || ""
+                        name: matchedConfig?.name || room.name || "",
+                        quality: matchedConfig?.quality || room.quality || "",
+                        videoSaveType: matchedConfig?.video_save_type || room.video_save_type || "",
+                        splitMode: matchedConfig?.split_mode || room.split_mode || "auto",
+                        splitCustomSecs: matchedConfig?.split_custom_secs || room.split_custom_secs || ""
                       });
                     }}
                   >

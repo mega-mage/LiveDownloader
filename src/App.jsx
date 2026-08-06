@@ -464,6 +464,8 @@ function App() {
         setRooms(res);
         const paused = await getEngineStatus();
         setIsEnginePaused(paused);
+        const cfg = await getConfig();
+        setConfig(cfg);
       } catch (err) {
         console.error("Error polling backend details:", err);
       }

@@ -164,7 +164,13 @@ pub async fn update_room_config(
     let mut config =
         AppConfig::load_or_create(&state.config_toml_path).map_err(|e| e.to_string())?;
 
-    if let Some(room) = config.rooms.iter_mut().find(|r| r.url == url) {
+    let target = url.trim().trim_end_matches('/');
+    if let Some(room) = config.rooms.iter_mut().find(|r| {
+        let u = r.url.trim().trim_end_matches('/');
+        u == target 
+        || format!("https://{}", u) == target 
+        || u == format!("https://{}", target)
+    }) {
         room.name = if name.as_ref().map_or(true, |n| n.trim().is_empty()) {
             None
         } else {

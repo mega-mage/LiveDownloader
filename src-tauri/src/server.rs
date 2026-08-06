@@ -465,7 +465,13 @@ async fn api_update_room_config(
         Ok(c) => c,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     };
-    if let Some(room) = config.rooms.iter_mut().find(|r| r.url == body.url) {
+    let target = body.url.trim().trim_end_matches('/');
+    if let Some(room) = config.rooms.iter_mut().find(|r| {
+        let u = r.url.trim().trim_end_matches('/');
+        u == target 
+        || format!("https://{}", u) == target 
+        || u == format!("https://{}", target)
+    }) {
         room.name = body.name.filter(|n| !n.trim().is_empty()).map(|s| s.trim().to_string());
         room.quality = body.quality.filter(|q| !q.trim().is_empty()).map(|s| s.trim().to_string());
         room.video_save_type = body.video_save_type.filter(|f| !f.trim().is_empty()).map(|s| s.trim().to_string());
@@ -475,7 +481,7 @@ async fn api_update_room_config(
         state.change_notify.notify_one();
         Ok(Json(serde_json::json!({ "ok": true })))
     } else {
-        Err((StatusCode::NOT_FOUND, "找不到该直播间监控配置".to_string()))
+        Err((StatusCode::NOT_FOUND, format!("找不到该直播间监控配置 ({})", body.url)))
     }
 }
 
