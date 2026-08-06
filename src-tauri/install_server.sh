@@ -484,7 +484,7 @@ EOF"
 
 # 2. 更新
 do_update() {
-    check_root
+    SUDO_CMD="$(get_sudo_cmd)"
 
     log_info "开始更新流程..."
 
@@ -500,20 +500,20 @@ do_update() {
 
     log_info "停止现有 LiveDownloader 服务..."
     if has_systemd; then
-        systemctl stop livedownloader || true
+        $SUDO_CMD systemctl stop livedownloader || true
     else
         stop_daemon_process
     fi
 
     log_info "替换二进制文件..."
-    mkdir -p "$(dirname "$DEST_BIN")"
-    install -m 755 "$FOUND_BIN" "$DEST_BIN"
-    ln -sf "$DEST_BIN" "$DEST_ALIAS"
+    $SUDO_CMD mkdir -p "$(dirname "$DEST_BIN")" 2>/dev/null || true
+    $SUDO_CMD install -m 755 "$FOUND_BIN" "$DEST_BIN"
+    $SUDO_CMD ln -sf "$DEST_BIN" "$DEST_ALIAS" 2>/dev/null || true
 
     log_info "重启 LiveDownloader 服务..."
     if has_systemd; then
-        systemctl daemon-reload || true
-        systemctl restart livedownloader || systemctl start livedownloader
+        $SUDO_CMD systemctl daemon-reload || true
+        $SUDO_CMD systemctl restart livedownloader || $SUDO_CMD systemctl start livedownloader
     else
         start_daemon_process
     fi
@@ -522,7 +522,7 @@ do_update() {
     log_success "  LiveDownloader 服务 [${ARCH}] 更新完成并已重新启动！"
     log_success "===================================================="
     if has_systemd; then
-        systemctl status livedownloader --no-pager || true
+        $SUDO_CMD systemctl status livedownloader --no-pager || true
     else
         do_status
     fi
@@ -530,22 +530,22 @@ do_update() {
 
 # 3. 服务控制函数
 do_start() {
-    check_root
+    SUDO_CMD="$(get_sudo_cmd)"
     if has_systemd; then
         log_info "正在启动 LiveDownloader 服务..."
-        systemctl start livedownloader
+        $SUDO_CMD systemctl start livedownloader
         log_success "服务已启动！"
-        systemctl status livedownloader --no-pager || true
+        $SUDO_CMD systemctl status livedownloader --no-pager || true
     else
         start_daemon_process
     fi
 }
 
 do_stop() {
-    check_root
+    SUDO_CMD="$(get_sudo_cmd)"
     if has_systemd; then
         log_info "正在停止 LiveDownloader 服务..."
-        systemctl stop livedownloader
+        $SUDO_CMD systemctl stop livedownloader
         log_success "服务已停止！"
     else
         stop_daemon_process
@@ -553,12 +553,12 @@ do_stop() {
 }
 
 do_restart() {
-    check_root
+    SUDO_CMD="$(get_sudo_cmd)"
     if has_systemd; then
         log_info "正在重启 LiveDownloader 服务..."
-        systemctl restart livedownloader
+        $SUDO_CMD systemctl restart livedownloader
         log_success "服务已重启！"
-        systemctl status livedownloader --no-pager || true
+        $SUDO_CMD systemctl status livedownloader --no-pager || true
     else
         stop_daemon_process
         start_daemon_process
@@ -566,8 +566,9 @@ do_restart() {
 }
 
 do_status() {
+    SUDO_CMD="$(get_sudo_cmd)"
     if has_systemd; then
-        systemctl status livedownloader --no-pager || true
+        $SUDO_CMD systemctl status livedownloader --no-pager || true
     else
         if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
             log_success "LiveDownloader 服务正在运行中 (PID: $(cat "$PID_FILE"), 端口: $(get_saved_port))"
@@ -578,8 +579,9 @@ do_status() {
 }
 
 do_logs() {
+    SUDO_CMD="$(get_sudo_cmd)"
     if has_systemd; then
-        journalctl -u livedownloader -f -n 100
+        $SUDO_CMD journalctl -u livedownloader -f -n 100
     else
         if [ -f "$LOG_FILE" ]; then
             log_info "展示最新日志 (${LOG_FILE}):"
@@ -592,7 +594,7 @@ do_logs() {
 
 # 4. 卸载
 do_uninstall() {
-    check_root
+    SUDO_CMD="$(get_sudo_cmd)"
 
     log_warn "确定要卸载 LiveDownloader 吗？"
     read -p "请输入 [y/N] 确认卸载: " confirm
@@ -603,30 +605,25 @@ do_uninstall() {
 
     log_info "停止服务..."
     if has_systemd; then
-        systemctl stop livedownloader || true
-        systemctl disable livedownloader || true
+        $SUDO_CMD systemctl stop livedownloader || true
+        $SUDO_CMD systemctl disable livedownloader || true
 
         if [ -f "$SYSTEMD_PATH" ]; then
             log_info "删除 systemd 服务配置文件..."
-            rm -f "$SYSTEMD_PATH"
-            systemctl daemon-reload || true
+            $SUDO_CMD rm -f "$SYSTEMD_PATH"
+            $SUDO_CMD systemctl daemon-reload || true
         fi
     else
         stop_daemon_process
     fi
 
     log_info "删除二进制文件与快捷链接..."
-    rm -f "$DEST_BIN" "$DEST_ALIAS"
+    $SUDO_CMD rm -f "$DEST_BIN" "$DEST_ALIAS" 2>/dev/null || true
+    rm -f "$DEST_BIN" "$DEST_ALIAS" 2>/dev/null || true
 
-    log_info "清理配置文件与工作目录 (${WORK_DIR} 及 ~/.config/livedownloader)..."
+    log_info "清理配置文件与工作目录 (${WORK_DIR})..."
     rm -rf "$WORK_DIR"
-    rm -rf "${HOME}/.config/livedownloader" "${HOME}/.config/LiveDownloader"
-    rm -rf "${HOME}/.livedownloader"
-    if [ -n "${SUDO_USER:-}" ]; then
-        rm -rf "/home/${SUDO_USER}/.config/livedownloader" "/home/${SUDO_USER}/.config/LiveDownloader"
-        rm -rf "/home/${SUDO_USER}/.livedownloader"
-    fi
-    rm -rf "/root/.config/livedownloader" "/root/.config/LiveDownloader" "/root/.livedownloader"
+    rm -rf "${REAL_HOME}/.livedownloader"
     log_success "已彻底删除所有配置文件及工作目录！"
 
     log_success "===================================================="
