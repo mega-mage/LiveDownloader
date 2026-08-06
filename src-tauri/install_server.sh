@@ -55,12 +55,15 @@ if is_termux; then
     PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
     DEST_BIN="${PREFIX}/bin/livedownloader"
     DEST_ALIAS="${PREFIX}/bin/ld-server"
-elif [ "$EUID" -eq 0 ]; then
-    DEST_BIN="/usr/bin/livedownloader"
-    DEST_ALIAS="/usr/bin/ld-server"
 else
-    DEST_BIN="${REAL_HOME}/.local/bin/livedownloader"
-    DEST_ALIAS="${REAL_HOME}/.local/bin/ld-server"
+    # 只要存在 root 权限或 sudo 权限，优先安装到 /usr/bin/livedownloader 系统全局可执行路径
+    if [ "$EUID" -eq 0 ] || command -v sudo &>/dev/null; then
+        DEST_BIN="/usr/bin/livedownloader"
+        DEST_ALIAS="/usr/bin/ld-server"
+    else
+        DEST_BIN="${REAL_HOME}/.local/bin/livedownloader"
+        DEST_ALIAS="${REAL_HOME}/.local/bin/ld-server"
+    fi
 fi
 
 WORK_DIR="${REAL_HOME}/.livedownloader"
