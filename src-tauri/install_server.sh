@@ -422,6 +422,12 @@ EOF
         fi
     fi
 
+    ROOMS_FILE="${WORK_DIR}/rooms.toml"
+    if [ ! -f "$ROOMS_FILE" ]; then
+        log_info "生成初始直播间配置文件 ${ROOMS_FILE}..."
+        echo "# LiveDownloader 直播间监控配置文件" > "$ROOMS_FILE"
+    fi
+
     SUDO_CMD="$(get_sudo_cmd)"
     $SUDO_CMD mkdir -p "$WORK_DIR" 2>/dev/null || true
     $SUDO_CMD chown -R "${REAL_USER}:${REAL_USER}" "$WORK_DIR" 2>/dev/null || true

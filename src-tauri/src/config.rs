@@ -146,6 +146,40 @@ pub struct LiveUrlConfig {
     pub split_custom_secs: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RoomsConfig {
+    #[serde(default)]
+    pub rooms: Vec<LiveUrlConfig>,
+}
+
+impl RoomsConfig {
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Self {
+        let path = path.as_ref();
+        if path.exists() {
+            if let Ok(toml_str) = std::fs::read_to_string(path) {
+                if !toml_str.trim().is_empty() {
+                    if let Ok(cfg) = toml::from_str::<RoomsConfig>(&toml_str) {
+                        return cfg;
+                    }
+                }
+            }
+        }
+        RoomsConfig::default()
+    }
+
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let path = path.as_ref();
+        let toml_str = toml::to_string_pretty(self)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, toml_str)?;
+        std::fs::rename(&tmp_path, path)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub settings: SettingsConfig,
@@ -156,7 +190,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub push: PushConfig,
 
-    #[serde(default)]
+    #[serde(skip_serializing, default)]
     pub rooms: Vec<LiveUrlConfig>,
 }
 
@@ -227,7 +261,8 @@ pub fn get_config_paths() -> (PathBuf, PathBuf) {
     let config_dir = home_dir.join(".livedownloader");
     let _ = std::fs::create_dir_all(&config_dir);
     let target_config = config_dir.join("config.toml");
-    (target_config.clone(), target_config)
+    let target_rooms = config_dir.join("rooms.toml");
+    (target_config, target_rooms)
 }
 
 pub fn get_downloading_dir(config_toml_path: &Path) -> PathBuf {
@@ -279,6 +314,11 @@ impl AppConfig {
             *value = decrypt_cookie(value);
         }
 
+        // Always load rooms from rooms.toml in the same directory
+        let rooms_path = path.with_file_name("rooms.toml");
+        let rooms_cfg = RoomsConfig::load_from_file(&rooms_path);
+        config.rooms = rooms_cfg.rooms;
+
         Ok(config)
     }
 
@@ -301,6 +341,14 @@ impl AppConfig {
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, toml_str)?;
         std::fs::rename(&tmp_path, path)?;
+
+        // Exclusively save rooms to rooms.toml
+        let rooms_path = path.with_file_name("rooms.toml");
+        let rooms_cfg = RoomsConfig {
+            rooms: self.rooms.clone(),
+        };
+        rooms_cfg.save_to_file(&rooms_path)?;
+
         Ok(())
     }
 }
