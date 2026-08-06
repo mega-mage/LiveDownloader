@@ -74,7 +74,6 @@ export function SettingsSection({
   setTgAutoUpload,
   cookies,
   setCookieModal,
-  handleSaveConfig,
   showAlert,
   lang
 }) {
@@ -82,9 +81,61 @@ export function SettingsSection({
 
   if (activeTab !== "settings") return null;
 
+  const handleSaveSection = async (sectionKey) => {
+    let baseConfig = {};
+    try {
+      baseConfig = (await getConfig()) || {};
+    } catch (err) {
+      console.error("Failed to fetch existing config:", err);
+    }
+
+    const numVal = (v, def) => {
+      const parsed = parseInt(v, 10);
+      return isNaN(parsed) ? def : parsed;
+    };
+
+    const updatedConfig = { ...baseConfig };
+    updatedConfig.settings = { ...updatedConfig.settings };
+
+    let successMsg = "";
+    if (sectionKey === "basic") {
+      updatedConfig.settings.save_path = savePath;
+      updatedConfig.settings.delay_default = numVal(pollInterval, 300);
+      successMsg = lang === "zh" ? "录制与保存基本配置保存成功！" : "Basic recording settings saved successfully!";
+    } else if (sectionKey === "segment") {
+      updatedConfig.settings.split_mode = splitMode || "time";
+      updatedConfig.settings.split_time_secs = numVal(splitTimeSecs, 1200);
+      updatedConfig.settings.split_size_mb = numVal(splitSizeMb, 1024);
+      updatedConfig.settings.split_video_bitrate_kbps = numVal(splitVideoBitrateKbps, 8000);
+      successMsg = lang === "zh" ? "录制分段切片设置保存成功！" : "Segment settings saved successfully!";
+    } else if (sectionKey === "proxy") {
+      updatedConfig.settings.use_proxy = useProxy === "是";
+      updatedConfig.settings.proxy_addr = proxyAddr.trim() || null;
+      successMsg = lang === "zh" ? "网络代理配置保存成功！" : "Proxy settings saved successfully!";
+    } else if (sectionKey === "push") {
+      updatedConfig.push = {
+        push_channels: pushChannels,
+        dingtalk_api: dingtalkApi.trim() || null,
+        bark_api: barkApi.trim() || null,
+        tg_token: tgToken.trim() || null,
+        tg_chat_id: tgChatId.trim() || null,
+        tg_auto_upload: tgAutoUpload,
+        tg_api_url: tgApiUrl.trim() || null,
+      };
+      successMsg = lang === "zh" ? "开播消息推送与上传配置保存成功！" : "Push notification settings saved successfully!";
+    }
+
+    try {
+      await saveConfig(updatedConfig);
+      showAlert(lang === "zh" ? "保存成功" : "Saved", successMsg, "success");
+    } catch (err) {
+      showAlert(lang === "zh" ? "保存失败" : "Error", `保存配置失败: ${err}`, "error");
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-10 animate-slide-in">
-      <form onSubmit={handleSaveConfig} className="space-y-6">
+      <div className="space-y-6">
         
         {/* 1. Connection Config (Only in Web browser mode) */}
         {isWeb && (
@@ -183,6 +234,16 @@ export function SettingsSection({
               </div>
             </div>
           </CardContent>
+          <CardFooter className="p-4 px-5 border-t border-border/40 bg-secondary/15 justify-end">
+            <Button
+              type="button"
+              className="h-8 text-xs font-semibold"
+              onClick={() => handleSaveSection("basic")}
+            >
+              <Database size={12} className="mr-1.5" />
+              {lang === "zh" ? "保存基本配置" : "Save Basic Settings"}
+            </Button>
+          </CardFooter>
         </Card>
 
         {/* 2.5 Segment / Split Configurations */}
@@ -216,6 +277,16 @@ export function SettingsSection({
               </p>
             </div>
           </CardContent>
+          <CardFooter className="p-4 px-5 border-t border-border/40 bg-secondary/15 justify-end">
+            <Button
+              type="button"
+              className="h-8 text-xs font-semibold"
+              onClick={() => handleSaveSection("segment")}
+            >
+              <Database size={12} className="mr-1.5" />
+              {lang === "zh" ? "保存切片设置" : "Save Segment Settings"}
+            </Button>
+          </CardFooter>
         </Card>
 
         {/* 3. Proxy Configurations */}
@@ -248,6 +319,16 @@ export function SettingsSection({
               </div>
             </div>
           </CardContent>
+          <CardFooter className="p-4 px-5 border-t border-border/40 bg-secondary/15 justify-end">
+            <Button
+              type="button"
+              className="h-8 text-xs font-semibold"
+              onClick={() => handleSaveSection("proxy")}
+            >
+              <Database size={12} className="mr-1.5" />
+              {lang === "zh" ? "保存代理配置" : "Save Proxy Settings"}
+            </Button>
+          </CardFooter>
         </Card>
 
         {/* 4. Notification Push Configurations */}
@@ -381,6 +462,16 @@ export function SettingsSection({
               )}
             </div>
           </CardContent>
+          <CardFooter className="p-4 px-5 border-t border-border/40 bg-secondary/15 justify-end">
+            <Button
+              type="button"
+              className="h-8 text-xs font-semibold"
+              onClick={() => handleSaveSection("push")}
+            >
+              <Database size={12} className="mr-1.5" />
+              {lang === "zh" ? "保存推送配置" : "Save Push Settings"}
+            </Button>
+          </CardFooter>
         </Card>
 
         {/* 5. Platform Credentials (Cookies) */}
@@ -446,15 +537,7 @@ export function SettingsSection({
           </CardContent>
         </Card>
 
-        {/* Save Configurations Button Footer */}
-        <div className="sticky bottom-0 -mx-5 mt-6 p-4 bg-card/90 backdrop-blur-md border-t border-border z-20 flex justify-end shadow-lg shadow-black/5">
-          <Button type="submit" className="h-10 font-bold px-6 shadow-md shadow-primary/20 cursor-pointer animate-none">
-            <Database size={16} className="mr-2" />
-            {t("save_global_config", lang)}
-          </Button>
-        </div>
-
-      </form>
+      </div>
     </div>
   );
 }
