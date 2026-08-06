@@ -202,9 +202,27 @@ pub fn get_config_paths() -> (PathBuf, PathBuf) {
         return (p.clone(), p);
     }
     let config_dir = if let Some(proj_dirs) =
-        directories::ProjectDirs::from("com", "LiveDownloader", "LiveDownloader")
+        directories::ProjectDirs::from("", "", "LiveDownloader")
     {
-        proj_dirs.config_dir().to_path_buf()
+        let new_dir = proj_dirs.config_dir().to_path_buf();
+        // Check for old nested path migration (e.g. AppData/Roaming/LiveDownloader/LiveDownloader)
+        if let Some(parent) = new_dir.parent() {
+            let old_nested_dir = parent.join("LiveDownloader").join("LiveDownloader");
+            if old_nested_dir.exists() && old_nested_dir != new_dir {
+                info!("Migrating config directory from nested {:?} to simplified {:?}", old_nested_dir, new_dir);
+                let _ = std::fs::create_dir_all(&new_dir);
+                if let Ok(entries) = std::fs::read_dir(&old_nested_dir) {
+                    for entry in entries.flatten() {
+                        let src = entry.path();
+                        let dest = new_dir.join(entry.file_name());
+                        if !dest.exists() {
+                            let _ = std::fs::rename(&src, &dest);
+                        }
+                    }
+                }
+            }
+        }
+        new_dir
     } else {
         PathBuf::from("./config")
     };
