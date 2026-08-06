@@ -82,7 +82,7 @@ MIRRORS=(
 )
 
 has_systemd() {
-    if is_termux; then
+    if is_termux || [ "$EUID" -ne 0 ]; then
         return 1
     fi
     if command -v systemctl &> /dev/null && systemctl is-system-running &> /dev/null 2>&1; then
