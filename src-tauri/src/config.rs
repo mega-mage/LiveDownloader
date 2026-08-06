@@ -351,6 +351,41 @@ impl AppConfig {
 
         Ok(())
     }
+    pub fn get_cookie_for_platform(&self, platform_id: &str) -> Option<String> {
+        let id_lower = platform_id.to_lowercase();
+        let keys_to_try: &[&str] = match id_lower.as_str() {
+            "douyin" => &["douyin", "抖音", "抖音cookie", "douyin_cookie"],
+            "bilibili" => &["bilibili", "b站", "b站cookie", "bilibili_cookie"],
+            "huya" => &["huya", "虎牙", "虎牙cookie", "huya_cookie"],
+            "kuaishou" => &["kuaishou", "快手", "快手cookie", "kuaishou_cookie"],
+            "douyu" => &["douyu", "斗鱼", "斗鱼cookie", "douyu_cookie"],
+            "maoerfm" => &["maoerfm", "猫耳", "猫耳cookie", "maoer_cookie"],
+            "netease_cc" => &["netease_cc", "网易cc", "网易cccookie", "netease_cookie"],
+            "weibo" => &["weibo", "微博", "微博cookie", "weibo_cookie"],
+            "taobao" => &["taobao", "淘宝", "淘宝cookie", "taobao_cookie"],
+            "acfun" => &["acfun", "a站", "A站cookie", "acfun_cookie"],
+            "twitch" => &["twitch", "Twitchcookie", "twitch_cookie"],
+            _ => &[platform_id],
+        };
+
+        for key in keys_to_try {
+            if let Some(val) = self.cookies.get(*key) {
+                let trimmed = val.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+
+        if let Some(val) = self.cookies.get(platform_id) {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+
+        None
+    }
 }
 
 // Custom secure XOR + Base64 encryption/obfuscation helpers for cookies
@@ -415,11 +450,12 @@ fn base64_decode(input: &str) -> Option<Vec<u8>> {
 }
 
 fn encrypt_cookie(val: &str) -> String {
-    if val.is_empty() {
-        return String::new();
+    let trimmed = val.trim();
+    if trimmed.is_empty() || trimmed.starts_with("enc_v1:") {
+        return trimmed.to_string();
     }
     let key = b"LiveDownloaderSecureSalt123!_CookieKey";
-    let input = val.as_bytes();
+    let input = trimmed.as_bytes();
     let mut encrypted = Vec::with_capacity(input.len());
     for (i, &byte) in input.iter().enumerate() {
         encrypted.push(byte ^ key[i % key.len()]);
@@ -428,18 +464,22 @@ fn encrypt_cookie(val: &str) -> String {
 }
 
 fn decrypt_cookie(val: &str) -> String {
-    if !val.starts_with("enc_v1:") {
-        return val.to_string();
+    let mut cur = val.trim().to_string();
+    while cur.starts_with("enc_v1:") {
+        let encrypted_base64 = &cur[7..];
+        let decoded = match base64_decode(encrypted_base64) {
+            Some(d) => d,
+            None => break,
+        };
+        let key = b"LiveDownloaderSecureSalt123!_CookieKey";
+        let mut decrypted = Vec::with_capacity(decoded.len());
+        for (i, &byte) in decoded.iter().enumerate() {
+            decrypted.push(byte ^ key[i % key.len()]);
+        }
+        match String::from_utf8(decrypted) {
+            Ok(s) => cur = s,
+            Err(_) => break,
+        }
     }
-    let encrypted_base64 = &val[7..];
-    let decoded = match base64_decode(encrypted_base64) {
-        Some(d) => d,
-        None => return val.to_string(),
-    };
-    let key = b"LiveDownloaderSecureSalt123!_CookieKey";
-    let mut decrypted = Vec::with_capacity(decoded.len());
-    for (i, &byte) in decoded.iter().enumerate() {
-        decrypted.push(byte ^ key[i % key.len()]);
-    }
-    String::from_utf8(decrypted).unwrap_or_else(|_| val.to_string())
+    cur
 }

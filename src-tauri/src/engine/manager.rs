@@ -88,7 +88,10 @@ impl TaskManager {
             }
             
             // Check if we need to reload configurations
-            let current_md5 = get_file_md5(&self.config_path).unwrap_or_default();
+            let config_md5 = get_file_md5(&self.config_path).unwrap_or_default();
+            let rooms_path = self.config_path.with_file_name("rooms.toml");
+            let rooms_md5 = get_file_md5(&rooms_path).unwrap_or_default();
+            let current_md5 = format!("{}:{}", config_md5, rooms_md5);
             let reload_needed = current_md5 != last_config_md5 || engine_just_resumed;
             
             if reload_needed {
@@ -265,7 +268,7 @@ async fn monitor_room_loop(
         }
     };
     
-    info!("Room task started for [{}] on platform [{}]", url, handler.name());
+    info!("Starting monitoring loop for room: [{}] ({})", handler.name(), url);
     
     loop {
         // Check cancellation
@@ -277,29 +280,7 @@ async fn monitor_room_loop(
         // Retrieve current configuration
         let (delay_secs, pc) = {
             let r_config = config.read().await;
-            let platform_cookie = r_config.cookies.get(handler.id())
-                .cloned()
-                .or_else(|| r_config.cookies.get("douyin").cloned())
-                .or_else(|| r_config.cookies.get("抖音").cloned())
-                .or_else(|| r_config.cookies.get("抖音cookie").cloned())
-                .or_else(|| r_config.cookies.get("douyin_cookie").cloned())
-                .or_else(|| {
-                    let key = match handler.id() {
-                        "douyin" => "抖音cookie",
-                        "bilibili" => "b站cookie",
-                        "huya" => "虎牙cookie",
-                        "kuaishou" => "快手cookie",
-                        "douyu" => "斗鱼cookie",
-                        "maoerfm" => "猫耳cookie",
-                        "netease_cc" => "网易cccookie",
-                        "weibo" => "微博cookie",
-                        "taobao" => "淘宝cookie",
-                        "acfun" => "A站cookie",
-                        "twitch" => "Twitchcookie",
-                        _ => "",
-                    };
-                    r_config.cookies.get(key).cloned()
-                });
+            let platform_cookie = r_config.get_cookie_for_platform(handler.id());
             let extra = HashMap::new();
             let proxy_to_use = if r_config.settings.use_proxy {
                 r_config.settings.proxy_addr.clone()
