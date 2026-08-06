@@ -247,7 +247,7 @@ pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String>
 }
 
 #[tauri::command]
-pub async fn save_config(new_config: AppConfig, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn save_config(mut new_config: AppConfig, state: State<'_, AppState>) -> Result<(), String> {
     info!(
         "save_config called. Cookies keys to save: {:?}",
         new_config.cookies.keys().collect::<Vec<_>>()
@@ -255,6 +255,29 @@ pub async fn save_config(new_config: AppConfig, state: State<'_, AppState>) -> R
     for (k, v) in &new_config.cookies {
         info!("  Cookie for platform '{}' length: {}", k, v.len());
     }
+
+    if new_config.rooms.is_empty() {
+        if let Ok(existing) = AppConfig::load_or_create(&state.config_toml_path) {
+            if !existing.rooms.is_empty() {
+                new_config.rooms = existing.rooms;
+            }
+        }
+        if new_config.rooms.is_empty() {
+            let map = state.room_statuses.read().await;
+            for room in map.values() {
+                new_config.rooms.push(crate::config::LiveUrlConfig {
+                    url: room.url.clone(),
+                    name: if room.anchor_name.is_empty() { None } else { Some(room.anchor_name.clone()) },
+                    quality: None,
+                    video_save_type: None,
+                    is_commented: false,
+                    split_mode: room.split_mode.clone(),
+                    split_custom_secs: room.split_custom_secs,
+                });
+            }
+        }
+    }
+
     new_config
         .save_to_file(&state.config_toml_path)
         .map_err(|e| e.to_string())?;

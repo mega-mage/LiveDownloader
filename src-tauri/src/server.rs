@@ -233,15 +233,56 @@ async fn api_delete_room(
 
 async fn api_get_config(state: AxumState<SharedState>) -> impl IntoResponse {
     match AppConfig::load_or_create(&state.config_toml_path) {
-        Ok(config) => Ok(Json(config)),
+        Ok(mut config) => {
+            if config.rooms.is_empty() {
+                let map = state.room_statuses.read().await;
+                if !map.is_empty() {
+                    for room in map.values() {
+                        config.rooms.push(crate::config::LiveUrlConfig {
+                            url: room.url.clone(),
+                            name: if room.anchor_name.is_empty() { None } else { Some(room.anchor_name.clone()) },
+                            quality: None,
+                            video_save_type: None,
+                            is_commented: false,
+                            split_mode: room.split_mode.clone(),
+                            split_custom_secs: room.split_custom_secs,
+                        });
+                    }
+                    let _ = config.save_to_file(&state.config_toml_path);
+                }
+            }
+            Ok(Json(config))
+        }
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }
 }
 
 async fn api_save_config(
     state: AxumState<SharedState>,
-    Json(new_config): Json<AppConfig>,
+    Json(mut new_config): Json<AppConfig>,
 ) -> impl IntoResponse {
+    if new_config.rooms.is_empty() {
+        if let Ok(existing) = AppConfig::load_or_create(&state.config_toml_path) {
+            if !existing.rooms.is_empty() {
+                new_config.rooms = existing.rooms;
+            }
+        }
+        if new_config.rooms.is_empty() {
+            let map = state.room_statuses.read().await;
+            for room in map.values() {
+                new_config.rooms.push(crate::config::LiveUrlConfig {
+                    url: room.url.clone(),
+                    name: if room.anchor_name.is_empty() { None } else { Some(room.anchor_name.clone()) },
+                    quality: None,
+                    video_save_type: None,
+                    is_commented: false,
+                    split_mode: room.split_mode.clone(),
+                    split_custom_secs: room.split_custom_secs,
+                });
+            }
+        }
+    }
+
     new_config.save_to_file(&state.config_toml_path)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     state.change_notify.notify_one();
