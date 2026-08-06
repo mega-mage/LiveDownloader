@@ -1,0 +1,87 @@
+name: Release Desktop GUI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-A linker_messages"
+
+jobs:
+  build-desktop:
+    name: Desktop GUI (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-amd64
+            args: ""
+
+          - os: macos-latest
+            platform: macos-universal
+            args: "--target universal-apple-darwin"
+
+          - os: ubuntu-latest
+            platform: linux-amd64
+            args: ""
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Release Tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+            echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux Desktop Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev libgtk-3-dev
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/ayatana-appindicator3-0.1.pc /usr/lib/x86_64-linux-gnu/pkgconfig/appindicator3-0.1.pc || true
+
+      - name: Install Frontend Dependencies
+        run: npm ci || npm install
+
+      - name: Build Desktop Application (Tauri Action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ steps.release_tag.outputs.tag }}
+          releaseName: 'LiveDownloader v__VERSION__'
+          releaseBody: 'See the assets below to download LiveDownloader Desktop App for Windows, macOS, and Linux.'
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
