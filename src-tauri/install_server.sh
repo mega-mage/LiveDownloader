@@ -37,14 +37,6 @@ is_termux() {
     [ -n "${TERMUX_VERSION:-}" ] || [ -d "/data/data/com.termux" ] || [[ "${PREFIX:-}" == *"com.termux"* ]]
 }
 
-if is_termux; then
-    PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-    DEST_BIN="${PREFIX}/bin/livedownloader"
-    DEST_ALIAS="${PREFIX}/bin/ld-server"
-else
-    DEST_BIN="/usr/bin/livedownloader"
-    DEST_ALIAS="/usr/bin/ld-server"
-fi
 if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
     REAL_USER="${SUDO_USER}"
     if [ -d "/home/${REAL_USER}" ]; then
@@ -57,6 +49,18 @@ if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
 else
     REAL_USER="$(whoami)"
     REAL_HOME="${HOME:-/root}"
+fi
+
+if is_termux; then
+    PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+    DEST_BIN="${PREFIX}/bin/livedownloader"
+    DEST_ALIAS="${PREFIX}/bin/ld-server"
+elif [ "$EUID" -eq 0 ]; then
+    DEST_BIN="/usr/bin/livedownloader"
+    DEST_ALIAS="/usr/bin/ld-server"
+else
+    DEST_BIN="${REAL_HOME}/.local/bin/livedownloader"
+    DEST_ALIAS="${REAL_HOME}/.local/bin/ld-server"
 fi
 
 WORK_DIR="${REAL_HOME}/.livedownloader"
@@ -90,13 +94,8 @@ has_systemd() {
 }
 
 check_root() {
-    if is_termux; then
-        return 0
-    fi
-    if [ "$EUID" -ne 0 ]; then
-        log_error "请使用 root 权限运行此脚本 (例如: sudo $0)"
-        exit 1
-    fi
+    # 支持非 root 用户直接安装运行 (将安装至 ~/.local/bin)
+    return 0
 }
 
 # 检查并自动安装 FFmpeg 依赖
