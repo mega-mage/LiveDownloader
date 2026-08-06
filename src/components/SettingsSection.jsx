@@ -4,7 +4,7 @@ import { Button } from "./ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "./ui/card";
 import { Input } from "./ui/input";
 import { Select } from "./ui/select";
-import { isWebMode, getApiBaseUrl, setApiBaseUrl, getApiToken, setApiToken } from "@/services/api";
+import { isWebMode, getApiBaseUrl, setApiBaseUrl, getApiToken, setApiToken, getConfig, saveConfig } from "@/services/api";
 import { t } from "../lib/i18n.js";
 import { 
   Server, 
