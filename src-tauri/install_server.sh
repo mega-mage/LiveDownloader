@@ -81,20 +81,28 @@ MIRRORS=(
     "https://ghp.ci/"
 )
 
+get_sudo_cmd() {
+    if [ "$EUID" -eq 0 ]; then
+        echo ""
+    elif command -v sudo &>/dev/null; then
+        echo "sudo"
+    else
+        echo ""
+    fi
+}
+
 has_systemd() {
-    if is_termux || [ "$EUID" -ne 0 ]; then
+    if is_termux; then
         return 1
     fi
-    if command -v systemctl &> /dev/null && systemctl is-system-running &> /dev/null 2>&1; then
-        return 0
-    elif [ -d /run/systemd/system ]; then
+    if command -v systemctl &> /dev/null && (systemctl is-system-running &> /dev/null 2>&1 || [ -d /run/systemd/system ]); then
         return 0
     fi
     return 1
 }
 
 check_root() {
-    # 支持非 root 用户直接安装运行 (将安装至 ~/.local/bin)
+    # 支持非 root 用户直接安装运行 (如果具有 sudo 权限将提示输入密码)
     return 0
 }
 
@@ -110,6 +118,7 @@ check_ffmpeg() {
     inst_ff=${inst_ff:-Y}
     if [[ "$inst_ff" =~ ^[Yy]$ ]]; then
         log_info "正在尝试自动安装 FFmpeg..."
+        SUDO_CMD="$(get_sudo_cmd)"
         if is_termux; then
             if command -v pkg &> /dev/null; then
                 pkg install -y ffmpeg
@@ -117,17 +126,17 @@ check_ffmpeg() {
                 apt-get update && apt-get install -y ffmpeg
             fi
         elif command -v apt-get &> /dev/null; then
-            apt-get update && apt-get install -y ffmpeg
+            $SUDO_CMD apt-get update && $SUDO_CMD apt-get install -y ffmpeg
         elif command -v dnf &> /dev/null; then
-            dnf install -y ffmpeg
+            $SUDO_CMD dnf install -y ffmpeg
         elif command -v yum &> /dev/null; then
-            yum install -y ffmpeg
+            $SUDO_CMD yum install -y ffmpeg
         elif command -v pacman &> /dev/null; then
-            pacman -Sy --noconfirm ffmpeg
+            $SUDO_CMD pacman -Sy --noconfirm ffmpeg
         elif command -v apk &> /dev/null; then
-            apk add ffmpeg
+            $SUDO_CMD apk add ffmpeg
         elif command -v zypper &> /dev/null; then
-            zypper install -y ffmpeg
+            $SUDO_CMD zypper install -y ffmpeg
         else
             log_error "未能识别的包管理器，请手动安装 ffmpeg 后再运行本服务！"
         fi
@@ -413,16 +422,19 @@ EOF
         fi
     fi
 
-    chown -R "${REAL_USER}:${REAL_USER}" "$WORK_DIR" 2>/dev/null || true
+    SUDO_CMD="$(get_sudo_cmd)"
+    $SUDO_CMD mkdir -p "$WORK_DIR" 2>/dev/null || true
+    $SUDO_CMD chown -R "${REAL_USER}:${REAL_USER}" "$WORK_DIR" 2>/dev/null || true
     if [ -d "${REAL_HOME}/downloads" ]; then
-        chown -R "${REAL_USER}:${REAL_USER}" "${REAL_HOME}/downloads" 2>/dev/null || true
+        $SUDO_CMD chown -R "${REAL_USER}:${REAL_USER}" "${REAL_HOME}/downloads" 2>/dev/null || true
     fi
-    install -m 755 "$FOUND_BIN" "$DEST_BIN"
-    ln -sf "$DEST_BIN" "$DEST_ALIAS"
+    $SUDO_CMD mkdir -p "$(dirname "$DEST_BIN")" 2>/dev/null || true
+    $SUDO_CMD install -m 755 "$FOUND_BIN" "$DEST_BIN"
+    $SUDO_CMD ln -sf "$DEST_BIN" "$DEST_ALIAS" 2>/dev/null || true
 
     if has_systemd; then
         log_info "配置 systemd 服务 ${SYSTEMD_PATH} (监听端口: ${PORT})..."
-        cat <<EOF > "$SYSTEMD_PATH"
+        $SUDO_CMD bash -c "cat <<EOF > '$SYSTEMD_PATH'
 [Unit]
 Description=LiveDownloader Backend Service
 After=network.target network-online.target
@@ -432,7 +444,7 @@ Wants=network-online.target
 Type=simple
 User=${REAL_USER}
 WorkingDirectory=${WORK_DIR}
-Environment="HOME=${REAL_HOME}"
+Environment=\"HOME=${REAL_HOME}\"
 ExecStart=${DEST_BIN} --server --port ${PORT}
 Restart=on-failure
 RestartSec=5s
@@ -440,10 +452,10 @@ LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
-EOF
-        systemctl daemon-reload || true
-        systemctl enable livedownloader
-        systemctl restart livedownloader
+EOF"
+        $SUDO_CMD systemctl daemon-reload || true
+        $SUDO_CMD systemctl enable livedownloader || true
+        $SUDO_CMD systemctl restart livedownloader || true
     else
         log_info "检测到非 systemd 环境 (Termux/无 systemd)，使用后台进程守护模式启动..."
         stop_daemon_process
