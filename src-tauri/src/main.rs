@@ -11,7 +11,7 @@ mod cli;
 #[cfg(feature = "server")]
 mod server;
 
-use config::{AppConfig, get_config_paths, migrate_old_config};
+use config::{AppConfig, get_config_paths};
 use engine::manager::{RoomStatus, TaskManager};
 use stream::proxy::StreamProxy;
 
@@ -251,9 +251,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     adjust_current_dir();
 
     let (config_toml_path, _) = get_config_paths();
-
-    let old_ini_path = Path::new("./config/config.ini");
-    migrate_old_config(old_ini_path, &config_toml_path);
 
     let args: Vec<String> = std::env::args().collect();
     let is_server_mode = args.iter().any(|a| a == "--server") || (!cfg!(feature = "gui") && cfg!(feature = "server"));
