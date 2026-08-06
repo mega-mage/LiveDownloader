@@ -414,7 +414,10 @@ EOF
         fi
     fi
 
-    chown -R "${REAL_USER}" "$WORK_DIR" 2>/dev/null || true
+    chown -R "${REAL_USER}:${REAL_USER}" "$WORK_DIR" 2>/dev/null || true
+    if [ -d "${REAL_HOME}/downloads" ]; then
+        chown -R "${REAL_USER}:${REAL_USER}" "${REAL_HOME}/downloads" 2>/dev/null || true
+    fi
     install -m 755 "$FOUND_BIN" "$DEST_BIN"
     ln -sf "$DEST_BIN" "$DEST_ALIAS"
 

@@ -171,7 +171,15 @@ impl Recorder {
         let downloading_file_path = downloading_dir.join(filename_str);
 
         // Create target directory if it doesn't exist
-        std::fs::create_dir_all(&dir_path)?;
+        if let Err(e) = std::fs::create_dir_all(&dir_path) {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                tracing::error!(
+                    "Permission denied (os error 13) creating output directory {:?}. Please fix directory ownership: sudo chown -R $USER {:?}",
+                    dir_path, dir_path
+                );
+            }
+            return Err(Box::new(e));
+        }
         
         let mut args = vec![
             "-y".to_string(),

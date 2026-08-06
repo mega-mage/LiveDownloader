@@ -235,7 +235,14 @@ pub fn get_downloading_dir(config_toml_path: &Path) -> PathBuf {
         .parent()
         .unwrap_or_else(|| Path::new("./config"));
     let downloading_dir = config_dir.join("downloading");
-    let _ = std::fs::create_dir_all(&downloading_dir);
+    if let Err(e) = std::fs::create_dir_all(&downloading_dir) {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            tracing::warn!("Permission denied creating {:?}, falling back to temp downloading directory", downloading_dir);
+            let fallback = std::env::temp_dir().join("livedownloader").join("downloading");
+            let _ = std::fs::create_dir_all(&fallback);
+            return fallback;
+        }
+    }
     downloading_dir
 }
 
