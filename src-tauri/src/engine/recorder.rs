@@ -131,9 +131,17 @@ impl Recorder {
                     .max(10);
                 (true, secs)
             }
+            "time" => {
+                let secs = config.settings.split_time_secs.max(10);
+                (true, secs)
+            }
             "auto" | _ => {
-                // Auto mode: use calculated duration if available, otherwise default initial 10 mins (600s)
-                let secs = room_auto_duration_secs.unwrap_or(600).max(10);
+                // Auto mode: calculate initial segment duration from target split_size_mb and video bitrate
+                let target_mb = config.settings.split_size_mb.max(10) as f64;
+                let target_kbps = config.settings.split_video_bitrate_kbps.max(500) as f64;
+                let calculated_secs = ((target_mb * 1024.0 * 8.0) / target_kbps).round() as u64;
+                let initial_default = calculated_secs.clamp(180, 14400); // 3 mins to 4 hours
+                let secs = room_auto_duration_secs.unwrap_or(initial_default).max(10);
                 (true, secs)
             }
         };

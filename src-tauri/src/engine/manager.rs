@@ -445,11 +445,14 @@ async fn monitor_room_loop(
                                                 if room_split_mode_str.to_lowercase() == "auto" {
                                                     let actual_mb = actual_bytes as f64 / (1024.0 * 1024.0);
                                                     let target_mb = app_config_cloned.settings.split_size_mb.max(10) as f64;
+                                                    let target_kbps = app_config_cloned.settings.split_video_bitrate_kbps.max(500) as f64;
+                                                    let calculated_secs = ((target_mb * 1024.0 * 8.0) / target_kbps).round() as u64;
+                                                    let initial_default = calculated_secs.clamp(180, 14400);
                                                     
                                                     if actual_mb > 1.0 {
                                                         let mut map = statuses_cloned.write().await;
                                                         if let Some(room) = map.get_mut(&url_str) {
-                                                            let current_secs = room.current_auto_duration_secs.unwrap_or(600);
+                                                            let current_secs = room.current_auto_duration_secs.unwrap_or(initial_default);
                                                             let is_in_target_range = actual_mb >= target_mb * 0.90 && actual_mb <= target_mb * 1.10;
                                                             
                                                             if is_in_target_range {
