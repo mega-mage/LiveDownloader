@@ -200,13 +200,30 @@ impl Default for AppConfig {
     }
 }
 
-pub fn get_config_paths() -> (PathBuf, PathBuf) {
-    let home_dir = directories::BaseDirs::new()
+pub fn get_user_home_dir() -> PathBuf {
+    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        let trimmed = sudo_user.trim();
+        if !trimmed.is_empty() && trimmed != "root" {
+            #[cfg(target_os = "macos")]
+            let user_home = PathBuf::from("/Users").join(trimmed);
+            #[cfg(not(target_os = "macos"))]
+            let user_home = PathBuf::from("/home").join(trimmed);
+
+            if user_home.exists() {
+                return user_home;
+            }
+        }
+    }
+
+    directories::BaseDirs::new()
         .map(|b| b.home_dir().to_path_buf())
         .or_else(|| std::env::var("HOME").ok().map(PathBuf::from))
         .or_else(|| std::env::var("USERPROFILE").ok().map(PathBuf::from))
-        .unwrap_or_else(|| PathBuf::from("."));
+        .unwrap_or_else(|| PathBuf::from("."))
+}
 
+pub fn get_config_paths() -> (PathBuf, PathBuf) {
+    let home_dir = get_user_home_dir();
     let config_dir = home_dir.join(".livedownloader");
     let _ = std::fs::create_dir_all(&config_dir);
     let target_config = config_dir.join("config.toml");

@@ -45,7 +45,21 @@ else
     DEST_BIN="/usr/bin/livedownloader"
     DEST_ALIAS="/usr/bin/ld-server"
 fi
-WORK_DIR="${HOME:-/root}/.livedownloader"
+if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+    REAL_USER="${SUDO_USER}"
+    if [ -d "/home/${REAL_USER}" ]; then
+        REAL_HOME="/home/${REAL_USER}"
+    elif [ -d "/Users/${REAL_USER}" ]; then
+        REAL_HOME="/Users/${REAL_USER}"
+    else
+        REAL_HOME="${HOME:-/root}"
+    fi
+else
+    REAL_USER="$(whoami)"
+    REAL_HOME="${HOME:-/root}"
+fi
+
+WORK_DIR="${REAL_HOME}/.livedownloader"
 SYSTEMD_PATH="/etc/systemd/system/livedownloader.service"
 DEFAULT_PORT="10730"
 PID_FILE="${WORK_DIR}/livedownloader.pid"
@@ -405,9 +419,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=${REAL_USER}
 WorkingDirectory=${WORK_DIR}
-Environment="HOME=${WORK_DIR}"
+Environment="HOME=${REAL_HOME}"
 ExecStart=${DEST_BIN} --server --port ${PORT}
 Restart=on-failure
 RestartSec=5s
