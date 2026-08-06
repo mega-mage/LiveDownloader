@@ -22,7 +22,30 @@ if ([string]::IsNullOrWhiteSpace($Tag)) {
 }
 
 $TargetFile = "livedownloader-server-linux-amd64"
-Write-Host "[INFO] Preparing Linux amd64 release for Tag: [ $Tag ]" -ForegroundColor Cyan
+
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host "  LiveDownloader Linux Server Release Publisher" -ForegroundColor Green
+Write-Host "  Target Release Tag: [ $Tag ]" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host "Select compilation/build mode:"
+Write-Host "  1) [Default] Use existing local binary directly (No re-compile)"
+Write-Host "  2) Recompile via 'cargo zigbuild' for x86_64-unknown-linux-musl and upload"
+Write-Host "  3) Recompile via 'cargo build' and upload"
+
+$choice = Read-Host "Enter option [1-3] (Default 1)"
+if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
+
+if ($choice -eq "2") {
+    Write-Host "[INFO] Recompiling via cargo zigbuild..." -ForegroundColor Cyan
+    Push-Location src-tauri
+    cargo zigbuild --target x86_64-unknown-linux-musl --release --no-default-features --features server
+    Pop-Location
+} elseif ($choice -eq "3") {
+    Write-Host "[INFO] Recompiling via cargo build..." -ForegroundColor Cyan
+    Push-Location src-tauri
+    cargo build --release --no-default-features --features server
+    Pop-Location
+}
 
 $BinSrc = ""
 if (Test-Path "src-tauri/target/x86_64-unknown-linux-musl/release/LiveDownloader") {
@@ -38,11 +61,8 @@ if (Test-Path "src-tauri/target/x86_64-unknown-linux-musl/release/LiveDownloader
 }
 
 if (-not $BinSrc -or -not (Test-Path $BinSrc)) {
-    Write-Host "[INFO] Binary not found. Compiling via cargo zigbuild..." -ForegroundColor Cyan
-    Push-Location src-tauri
-    cargo zigbuild --target x86_64-unknown-linux-musl --release --no-default-features --features server
-    Pop-Location
-    $BinSrc = "src-tauri/target/x86_64-unknown-linux-musl/release/LiveDownloader"
+    Write-Host "[ERROR] Could not find compiled binary file!" -ForegroundColor Red
+    exit 1
 }
 
 Copy-Item $BinSrc -Destination $TargetFile -Force
