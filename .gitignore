@@ -9,3 +9,5 @@ node_modules
 TODO.md
 *.zip
 *.bat
+*.ps1
+publish_server_release.sh
