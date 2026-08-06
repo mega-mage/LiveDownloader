@@ -197,10 +197,27 @@ impl Default for AppConfig {
 }
 
 pub fn get_config_paths() -> (PathBuf, PathBuf) {
+    // 1. Current working directory config.toml
     if std::path::Path::new("config.toml").exists() {
         let p = std::fs::canonicalize("config.toml").unwrap_or_else(|_| PathBuf::from("./config.toml"));
         return (p.clone(), p);
     }
+
+    // 2. Standard Linux server data directory (/var/lib/livedownloader/config.toml)
+    let var_lib_config = PathBuf::from("/var/lib/livedownloader/config.toml");
+    if var_lib_config.exists() {
+        return (var_lib_config.clone(), var_lib_config);
+    }
+
+    // 3. User home directory ~/.livedownloader/config.toml (Termux / Linux user home)
+    if let Ok(home) = std::env::var("HOME") {
+        let home_config = PathBuf::from(home).join(".livedownloader").join("config.toml");
+        if home_config.exists() {
+            return (home_config.clone(), home_config);
+        }
+    }
+
+    // 4. BaseDirs config directory (~/.config/LiveDownloader/config.toml or AppData/Roaming/LiveDownloader/config.toml)
     let config_dir = if let Some(base_dirs) = directories::BaseDirs::new() {
         let new_dir = base_dirs.config_dir().join("LiveDownloader");
         let old_nested_dir = new_dir.join("LiveDownloader");
