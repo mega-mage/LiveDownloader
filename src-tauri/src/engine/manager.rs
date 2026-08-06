@@ -459,7 +459,7 @@ async fn monitor_room_loop(
                                                                 info!("Auto split calculation for [{}]: Segment size {:.2} MB is within target ({:.0} MB ±10%). Duration remains {}s.", display_name_str, actual_mb, target_mb, current_secs);
                                                             } else {
                                                                 let new_secs = ((current_secs as f64) * (target_mb / actual_mb)).round() as u64;
-                                                                let clamped_secs = new_secs.clamp(60, 86400); // 1 min to 24 hours
+                                                                let clamped_secs = new_secs.clamp(180, 10800); // 3 mins to 3 hours
                                                                 info!("Auto split calculation for [{}]: 1st segment was {:.2} MB in {}s. Adjusting next segment duration to {}s (~{:.1} mins) to target {:.0} MB.", display_name_str, actual_mb, current_secs, clamped_secs, clamped_secs as f64 / 60.0, target_mb);
                                                                 room.current_auto_duration_secs = Some(clamped_secs);
                                                             }
