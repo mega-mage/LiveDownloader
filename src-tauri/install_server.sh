@@ -41,12 +41,11 @@ if is_termux; then
     PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
     DEST_BIN="${PREFIX}/bin/livedownloader"
     DEST_ALIAS="${PREFIX}/bin/ld-server"
-    WORK_DIR="${HOME}/.livedownloader"
 else
     DEST_BIN="/usr/bin/livedownloader"
     DEST_ALIAS="/usr/bin/ld-server"
-    WORK_DIR="/var/lib/livedownloader"
 fi
+WORK_DIR="${HOME:-/root}/.livedownloader"
 SYSTEMD_PATH="/etc/systemd/system/livedownloader.service"
 DEFAULT_PORT="10730"
 PID_FILE="${WORK_DIR}/livedownloader.pid"

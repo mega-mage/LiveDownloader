@@ -201,53 +201,46 @@ impl Default for AppConfig {
 }
 
 pub fn get_config_paths() -> (PathBuf, PathBuf) {
-    // 1. Current working directory config.toml
-    if std::path::Path::new("config.toml").exists() {
-        let p = std::fs::canonicalize("config.toml").unwrap_or_else(|_| PathBuf::from("./config.toml"));
-        return (p.clone(), p);
-    }
+    let home_dir = directories::BaseDirs::new()
+        .map(|b| b.home_dir().to_path_buf())
+        .or_else(|| std::env::var("HOME").ok().map(PathBuf::from))
+        .or_else(|| std::env::var("USERPROFILE").ok().map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("."));
 
-    // 2. Standard Linux server data directory (/var/lib/livedownloader/config.toml)
-    let var_lib_config = PathBuf::from("/var/lib/livedownloader/config.toml");
-    if var_lib_config.exists() {
-        return (var_lib_config.clone(), var_lib_config);
-    }
+    let config_dir = home_dir.join(".livedownloader");
+    let _ = std::fs::create_dir_all(&config_dir);
+    let target_config = config_dir.join("config.toml");
 
-    // 3. User home directory ~/.livedownloader/config.toml (Termux / Linux user home)
-    if let Ok(home) = std::env::var("HOME") {
-        let home_config = PathBuf::from(home).join(".livedownloader").join("config.toml");
-        if home_config.exists() {
-            return (home_config.clone(), home_config);
+    // Migrate from legacy config locations if target config doesn't exist yet
+    if !target_config.exists() {
+        let mut legacy_dirs = Vec::new();
+        if let Some(base_dirs) = directories::BaseDirs::new() {
+            legacy_dirs.push(base_dirs.config_dir().join("LiveDownloader"));
+            legacy_dirs.push(base_dirs.config_dir().join("LiveDownloader").join("LiveDownloader"));
         }
-    }
+        legacy_dirs.push(PathBuf::from("/var/lib/livedownloader"));
+        legacy_dirs.push(PathBuf::from("./config"));
+        legacy_dirs.push(PathBuf::from("."));
 
-    // 4. BaseDirs config directory (~/.config/LiveDownloader/config.toml or AppData/Roaming/LiveDownloader/config.toml)
-    let config_dir = if let Some(base_dirs) = directories::BaseDirs::new() {
-        let new_dir = base_dirs.config_dir().join("LiveDownloader");
-        let old_nested_dir = new_dir.join("LiveDownloader");
-
-        // Check for old nested path migration (e.g. AppData/Roaming/LiveDownloader/LiveDownloader)
-        if old_nested_dir.exists() && old_nested_dir != new_dir {
-            info!("Migrating config directory from nested {:?} to simplified {:?}", old_nested_dir, new_dir);
-            let _ = std::fs::create_dir_all(&new_dir);
-            if let Ok(entries) = std::fs::read_dir(&old_nested_dir) {
-                for entry in entries.flatten() {
-                    let src = entry.path();
-                    let dest = new_dir.join(entry.file_name());
-                    if !dest.exists() {
-                        let _ = std::fs::rename(&src, &dest);
+        for legacy_dir in legacy_dirs {
+            let legacy_config = legacy_dir.join("config.toml");
+            if legacy_config.exists() && legacy_config != target_config {
+                info!("Migrating legacy config directory {:?} -> {:?}", legacy_dir, config_dir);
+                if let Ok(entries) = std::fs::read_dir(&legacy_dir) {
+                    for entry in entries.flatten() {
+                        let src = entry.path();
+                        let dest = config_dir.join(entry.file_name());
+                        if !dest.exists() {
+                            let _ = std::fs::rename(&src, &dest);
+                        }
                     }
                 }
+                break;
             }
         }
-        new_dir
-    } else {
-        PathBuf::from("./config")
-    };
+    }
 
-    let config_path = config_dir.join("config.toml");
-    // We return config_path for both main config and url config since they are merged now.
-    (config_path.clone(), config_path)
+    (target_config.clone(), target_config)
 }
 
 pub fn get_downloading_dir(config_toml_path: &Path) -> PathBuf {
