@@ -130,6 +130,8 @@ pub struct RoomsConfig {
     pub rooms: Vec<LiveUrlConfig>,
 }
 
+static CONFIG_FILE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub fn safe_rename<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> Result<(), std::io::Error> {
     let from = from.as_ref();
     let to = to.as_ref();
@@ -140,11 +142,59 @@ pub fn safe_rename<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> Result<(),
     Ok(())
 }
 
+/// Abstracted thread-safe configuration file manager.
+/// Enforces single-writer / multi-reader file safety across threads with automatic retry backoff.
+pub struct ConfigFileManager;
+
+impl ConfigFileManager {
+    /// Safely read configuration file content under process-wide file lock
+    pub fn read_file<P: AsRef<Path>>(path: P) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let _guard = CONFIG_FILE_LOCK.lock().map_err(|e| e.to_string())?;
+        let path = path.as_ref();
+        
+        let mut retries = 5;
+        loop {
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    if content.trim().is_empty() && retries > 0 {
+                        retries -= 1;
+                        std::thread::sleep(std::time::Duration::from_millis(15));
+                        continue;
+                    }
+                    return Ok(content);
+                }
+                Err(e) => {
+                    if retries > 0 && (e.kind() == std::io::ErrorKind::PermissionDenied || e.kind() == std::io::ErrorKind::NotFound) {
+                        retries -= 1;
+                        std::thread::sleep(std::time::Duration::from_millis(15));
+                        continue;
+                    }
+                    return Err(Box::new(e));
+                }
+            }
+        }
+    }
+
+    /// Safely write configuration file atomically under process-wide file lock
+    pub fn write_file<P: AsRef<Path>>(path: P, content: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let _guard = CONFIG_FILE_LOCK.lock().map_err(|e| e.to_string())?;
+        let path = path.as_ref();
+        
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, content)?;
+        safe_rename(&tmp_path, path)?;
+        Ok(())
+    }
+}
+
 impl RoomsConfig {
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let path = path.as_ref();
         if path.exists() {
-            let toml_str = std::fs::read_to_string(path)?;
+            let toml_str = ConfigFileManager::read_file(path)?;
             if toml_str.trim().is_empty() {
                 tracing::warn!("[ROOMS_LOAD] rooms.toml at {:?} exists but is empty", path);
                 return Err("rooms.toml exists but is empty".into());
@@ -168,12 +218,7 @@ impl RoomsConfig {
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let path = path.as_ref();
         let toml_str = toml::to_string_pretty(self)?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let tmp_path = path.with_extension("tmp");
-        std::fs::write(&tmp_path, toml_str)?;
-        safe_rename(&tmp_path, path)?;
+        ConfigFileManager::write_file(path, &toml_str)?;
         Ok(())
     }
 }
@@ -294,7 +339,7 @@ impl AppConfig {
         path: P,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let path = path.as_ref();
-        let toml_str = std::fs::read_to_string(path)?;
+        let toml_str = ConfigFileManager::read_file(path)?;
         if toml_str.trim().is_empty() {
             return Err("Configuration file is empty or currently being updated".into());
         }
@@ -337,12 +382,7 @@ impl AppConfig {
         }
 
         let toml_str = toml::to_string_pretty(&config_to_save)?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let tmp_path = path.with_extension("tmp");
-        std::fs::write(&tmp_path, toml_str)?;
-        safe_rename(&tmp_path, path)?;
+        ConfigFileManager::write_file(path, &toml_str)?;
 
         // Exclusively save rooms to rooms.toml
         let rooms_path = path.with_file_name("rooms.toml");

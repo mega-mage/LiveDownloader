@@ -787,9 +787,13 @@ fn load_room_statuses_from_file(config_path: &Path) -> HashMap<String, RoomStatu
 }
 
 fn get_file_md5<P: AsRef<Path>>(path: P) -> Result<String, std::io::Error> {
-    let content = fs::read(path)?;
-    let digest = md5::compute(content);
-    Ok(format!("{:x}", digest))
+    match crate::config::ConfigFileManager::read_file(path) {
+        Ok(content) => {
+            let digest = md5::compute(content.as_bytes());
+            Ok(format!("{:x}", digest))
+        }
+        Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+    }
 }
 
 fn find_completed_segments(
