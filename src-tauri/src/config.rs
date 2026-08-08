@@ -156,13 +156,32 @@ impl RoomsConfig {
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Self {
         let path = path.as_ref();
         if path.exists() {
-            if let Ok(toml_str) = std::fs::read_to_string(path) {
-                if !toml_str.trim().is_empty() {
-                    if let Ok(cfg) = toml::from_str::<RoomsConfig>(&toml_str) {
-                        return cfg;
+            match std::fs::read_to_string(path) {
+                Ok(toml_str) => {
+                    if toml_str.trim().is_empty() {
+                        tracing::warn!("[ROOMS_LOAD] rooms.toml at {:?} exists but is EMPTY ({} bytes raw)", path, toml_str.len());
+                        return RoomsConfig::default();
+                    }
+                    match toml::from_str::<RoomsConfig>(&toml_str) {
+                        Ok(cfg) => {
+                            tracing::debug!("[ROOMS_LOAD] Loaded {} rooms from {:?}", cfg.rooms.len(), path);
+                            if cfg.rooms.is_empty() {
+                                tracing::warn!("[ROOMS_LOAD] rooms.toml parsed successfully but contains 0 rooms!");
+                            }
+                            return cfg;
+                        }
+                        Err(e) => {
+                            tracing::error!("[ROOMS_LOAD] Failed to parse rooms.toml at {:?}: {}", path, e);
+                            tracing::debug!("[ROOMS_LOAD] rooms.toml content ({} bytes): {:?}", toml_str.len(), &toml_str[..toml_str.len().min(500)]);
+                        }
                     }
                 }
+                Err(e) => {
+                    tracing::error!("[ROOMS_LOAD] Failed to read rooms.toml at {:?}: {}", path, e);
+                }
             }
+        } else {
+            tracing::info!("[ROOMS_LOAD] rooms.toml does not exist at {:?}, returning empty", path);
         }
         RoomsConfig::default()
     }

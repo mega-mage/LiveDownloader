@@ -95,19 +95,52 @@ impl TaskManager {
             let reload_needed = current_md5 != last_config_md5 || engine_just_resumed;
             
             if reload_needed {
-                info!("Configuration file changed or loaded for the first time. Reloading...");
+                info!("Configuration file changed or loaded for the first time. Reloading... (config_md5={}, rooms_md5={})", config_md5, rooms_md5);
                 last_config_md5 = current_md5;
                 
-                if let Ok(new_config) = AppConfig::load_from_file(&self.config_path) {
-                    let mut w_config = self.config.write().await;
-                    *w_config = new_config;
+                match AppConfig::load_from_file(&self.config_path) {
+                    Ok(new_config) => {
+                        let rooms_count = new_config.rooms.len();
+                        let commented_count = new_config.rooms.iter().filter(|r| r.is_commented).count();
+                        debug!("[CONFIG_RELOAD] Loaded config: {} total rooms, {} commented, {} active", rooms_count, commented_count, rooms_count - commented_count);
+                        for (i, r) in new_config.rooms.iter().enumerate() {
+                            debug!("[CONFIG_RELOAD]   room[{}]: url={}, name={:?}, commented={}", i, r.url, r.name, r.is_commented);
+                        }
+                        let mut w_config = self.config.write().await;
+                        *w_config = new_config;
+                    }
+                    Err(e) => {
+                        error!("[CONFIG_RELOAD] Failed to load config from {:?}: {}", self.config_path, e);
+                    }
                 }
                 
                 let rooms = {
                     let r_config = self.config.read().await;
                     r_config.rooms.clone()
                 };
+                
+                // Log current state before sync
+                {
+                    let map = self.room_statuses.read().await;
+                    debug!("[SYNC_BEFORE] Status map has {} entries, active_tasks has {} entries", map.len(), self.active_tasks.len());
+                    for (url, status) in map.iter() {
+                        debug!("[SYNC_BEFORE]   status_map: url={}, status={}, anchor={}", url, status.status, status.anchor_name);
+                    }
+                    for url in self.active_tasks.keys() {
+                        debug!("[SYNC_BEFORE]   active_task: url={}", url);
+                    }
+                }
+                
                 self.sync_tasks(rooms, platform_manager.clone(), recorder.clone()).await;
+                
+                // Log state after sync
+                {
+                    let map = self.room_statuses.read().await;
+                    debug!("[SYNC_AFTER] Status map has {} entries, active_tasks has {} entries", map.len(), self.active_tasks.len());
+                    for (url, status) in map.iter() {
+                        debug!("[SYNC_AFTER]   status_map: url={}, status={}, anchor={}", url, status.status, status.anchor_name);
+                    }
+                }
             }
             
             // Re-check files every 10 seconds or when notified of changes
@@ -151,15 +184,18 @@ impl TaskManager {
     ) {
         let mut current_urls = HashSet::new();
         
+        debug!("[SYNC_TASKS] Starting sync with {} rooms from config", rooms.len());
+        
         for url_cfg in rooms {
             if url_cfg.is_commented {
+                debug!("[SYNC_TASKS] Skipping commented room: {}", url_cfg.url);
                 continue;
             }
             
             current_urls.insert(url_cfg.url.clone());
             
             if !self.active_tasks.contains_key(&url_cfg.url) {
-                info!("Starting new monitor task for URL: {}", url_cfg.url);
+                info!("[SYNC_TASKS] Starting new monitor task for URL: {}", url_cfg.url);
                 let (stop_tx, stop_rx) = oneshot::channel::<()>();
                 
                 let url = url_cfg.url.clone();
@@ -182,6 +218,7 @@ impl TaskManager {
                     let initial_status = if paused { "Paused" } else { "Idle" };
 
                     if let Some(existing) = map.get_mut(&url) {
+                        debug!("[SYNC_TASKS] Room {} already in status map (status={}), updating", url, existing.status);
                         if existing.status == "Paused" && !paused {
                             existing.status = "Idle".to_string();
                         }
@@ -192,6 +229,7 @@ impl TaskManager {
                             existing.platform = handler_name.to_string();
                         }
                     } else {
+                        debug!("[SYNC_TASKS] Inserting new room {} into status map with status={}", url, initial_status);
                         map.insert(url.clone(), RoomStatus {
                             url: url.clone(),
                             title: "".to_string(),
@@ -223,6 +261,8 @@ impl TaskManager {
                 });
                 
                 self.active_tasks.insert(url_cfg.url, stop_tx);
+            } else {
+                debug!("[SYNC_TASKS] Room {} already has active task, skipping", url_cfg.url);
             }
         }
         
@@ -234,9 +274,14 @@ impl TaskManager {
             }
         }
         
+        if !to_remove.is_empty() {
+            warn!("[SYNC_TASKS] About to REMOVE {} rooms from status map that are no longer in config: {:?}", to_remove.len(), to_remove);
+            debug!("[SYNC_TASKS] current_urls from config ({} items): {:?}", current_urls.len(), current_urls);
+        }
+        
         for url in to_remove {
             if let Some(stop_tx) = self.active_tasks.remove(&url) {
-                info!("Stopping monitor task for URL: {}", url);
+                warn!("[SYNC_TASKS] REMOVING room and stopping monitor task for URL: {}", url);
                 let _ = stop_tx.send(());
                 
                 // Remove from state
@@ -536,11 +581,14 @@ async fn monitor_room_loop(
                 // Recording stopped, update state back to Idle
                 {
                     let mut map = statuses.write().await;
+                    let map_len = map.len();
                     if let Some(room) = map.get_mut(&url) {
+                        debug!("[ROOM_LIFECYCLE] Recording finished for [{}], setting status from '{}' -> 'Idle' (map has {} entries)", url, room.status, map_len);
                         room.status = "Idle".to_string();
                         room.record_path = None;
                         room.live_url = None;
                     } else {
+                        warn!("[ROOM_LIFECYCLE] Room [{}] was NOT in status_map after recording finished (map has {} entries)! Re-inserting.", url, map_len);
                         map.insert(url.clone(), RoomStatus {
                             url: url.clone(),
                             title: "".to_string(),
@@ -562,9 +610,14 @@ async fn monitor_room_loop(
                 {
                     let mut map = statuses.write().await;
                     if let Some(room) = map.get_mut(&url) {
+                        if room.status != "Idle" {
+                            debug!("[ROOM_LIFECYCLE] Room [{}] status changing '{}' -> 'Idle'", url, room.status);
+                        }
                         room.status = "Idle".to_string();
                         room.record_path = None;
                         room.live_url = None;
+                    } else {
+                        warn!("[ROOM_LIFECYCLE] Room [{}] is Idle but NOT in status_map (map has {} entries)!", url, map.len());
                     }
                 }
                 save_room_statuses(&statuses).await;
@@ -607,10 +660,21 @@ async fn save_room_statuses(statuses: &Arc<RwLock<HashMap<String, RoomStatus>>>)
         let status_path = parent.join("statuses.json");
         let tmp_status_path = parent.join("statuses.json.tmp");
         let statuses_map = statuses.read().await;
+        let count = statuses_map.len();
+        debug!("[SAVE_STATUSES] Saving {} room statuses to {:?}", count, status_path);
+        if count == 0 {
+            warn!("[SAVE_STATUSES] WARNING: Saving EMPTY status map to statuses.json!");
+        }
         if let Ok(json_str) = serde_json::to_string_pretty(&*statuses_map) {
-            if fs::write(&tmp_status_path, json_str).is_ok() {
-                let _ = fs::rename(&tmp_status_path, &status_path);
+            if fs::write(&tmp_status_path, &json_str).is_ok() {
+                if let Err(e) = fs::rename(&tmp_status_path, &status_path) {
+                    error!("[SAVE_STATUSES] Failed to rename tmp status file: {}", e);
+                }
+            } else {
+                error!("[SAVE_STATUSES] Failed to write tmp status file {:?}", tmp_status_path);
             }
+        } else {
+            error!("[SAVE_STATUSES] Failed to serialize status map to JSON");
         }
     }
 }
@@ -619,26 +683,41 @@ fn load_room_statuses_from_file(config_path: &Path) -> HashMap<String, RoomStatu
     if let Some(parent) = config_path.parent() {
         let status_path = parent.join("statuses.json");
         if status_path.exists() {
-            if let Ok(content) = fs::read_to_string(&status_path) {
-                if let Ok(mut map) = serde_json::from_str::<HashMap<String, RoomStatus>>(&content) {
-                    for status in map.values_mut() {
-                        if status.status == "Living" {
-                            status.status = "Idle".to_string();
-                            status.live_url = None;
-                            status.record_path = None;
-                        }
-                        if let Some(ref mut live_u) = status.live_url {
-                            if live_u.contains("pull-flv-") || live_u.contains(".flv") {
-                                *live_u = live_u
-                                    .replace("pull-flv-", "pull-hls-")
-                                    .replace(".flv?", ".m3u8?")
-                                    .replace(".flv", ".m3u8");
+            match fs::read_to_string(&status_path) {
+                Ok(content) => {
+                    debug!("[LOAD_STATUSES] Read statuses.json ({} bytes)", content.len());
+                    match serde_json::from_str::<HashMap<String, RoomStatus>>(&content) {
+                        Ok(mut map) => {
+                            info!("[LOAD_STATUSES] Loaded {} room statuses from statuses.json", map.len());
+                            for (url, status) in map.iter_mut() {
+                                debug!("[LOAD_STATUSES]   room: url={}, status={}, anchor={}", url, status.status, status.anchor_name);
+                                if status.status == "Living" {
+                                    status.status = "Idle".to_string();
+                                    status.live_url = None;
+                                    status.record_path = None;
+                                }
+                                if let Some(ref mut live_u) = status.live_url {
+                                    if live_u.contains("pull-flv-") || live_u.contains(".flv") {
+                                        *live_u = live_u
+                                            .replace("pull-flv-", "pull-hls-")
+                                            .replace(".flv?", ".m3u8?")
+                                            .replace(".flv", ".m3u8");
+                                    }
+                                }
                             }
+                            return map;
+                        }
+                        Err(e) => {
+                            error!("[LOAD_STATUSES] Failed to parse statuses.json: {}", e);
                         }
                     }
-                    return map;
+                }
+                Err(e) => {
+                    error!("[LOAD_STATUSES] Failed to read statuses.json: {}", e);
                 }
             }
+        } else {
+            info!("[LOAD_STATUSES] statuses.json does not exist at {:?}", status_path);
         }
     }
     HashMap::new()

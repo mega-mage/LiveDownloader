@@ -87,67 +87,80 @@ async fn api_get_rooms(state: AxumState<SharedState>) -> impl IntoResponse {
     let map = state.room_statuses.read().await;
     let mut result = Vec::new();
 
-    if let Ok(config) = AppConfig::load_or_create(&state.config_toml_path) {
-        if !config.rooms.is_empty() || map.is_empty() {
-            for r in config.rooms {
-                if r.is_commented {
-                    let (anchor, title, platform, auto_dur) = if let Some(existing) = map.get(&r.url) {
-                        (
-                            if existing.anchor_name.is_empty() || existing.anchor_name == "未知主播" {
-                                r.name.clone().unwrap_or_else(|| "未知主播".to_string())
-                            } else {
-                                existing.anchor_name.clone()
-                            },
-                            existing.title.clone(),
-                            existing.platform.clone(),
-                            existing.current_auto_duration_secs,
-                        )
-                    } else {
-                        (
-                            r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
-                            "".to_string(),
-                            "".to_string(),
-                            None,
-                        )
-                    };
+    match AppConfig::load_or_create(&state.config_toml_path) {
+        Ok(config) => {
+            let config_room_count = config.rooms.len();
+            let status_map_count = map.len();
+            tracing::debug!("[API_GET_ROOMS] config.rooms={}, status_map={}, config_rooms_empty={}, map_empty={}", 
+                config_room_count, status_map_count, config.rooms.is_empty(), map.is_empty());
+            
+            if !config.rooms.is_empty() || map.is_empty() {
+                for r in config.rooms {
+                    if r.is_commented {
+                        let (anchor, title, platform, auto_dur) = if let Some(existing) = map.get(&r.url) {
+                            (
+                                if existing.anchor_name.is_empty() || existing.anchor_name == "未知主播" {
+                                    r.name.clone().unwrap_or_else(|| "未知主播".to_string())
+                                } else {
+                                    existing.anchor_name.clone()
+                                },
+                                existing.title.clone(),
+                                existing.platform.clone(),
+                                existing.current_auto_duration_secs,
+                            )
+                        } else {
+                            (
+                                r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
+                                "".to_string(),
+                                "".to_string(),
+                                None,
+                            )
+                        };
 
-                    result.push(RoomStatus {
-                        url: r.url.clone(),
-                        title,
-                        anchor_name: anchor,
-                        status: "Paused".to_string(),
-                        record_path: None,
-                        live_url: None,
-                        platform,
-                        split_mode: r.split_mode.clone(),
-                        split_custom_secs: r.split_custom_secs,
-                        current_auto_duration_secs: auto_dur,
-                    });
-                } else if let Some(status) = map.get(&r.url) {
-                    let mut status_clone = status.clone();
-                    status_clone.split_mode = r.split_mode.clone();
-                    status_clone.split_custom_secs = r.split_custom_secs;
-                    result.push(status_clone);
-                } else {
-                    result.push(RoomStatus {
-                        url: r.url.clone(),
-                        title: "".to_string(),
-                        anchor_name: r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
-                        status: "Idle".to_string(),
-                        record_path: None,
-                        live_url: None,
-                        platform: "".to_string(),
-                        split_mode: r.split_mode.clone(),
-                        split_custom_secs: r.split_custom_secs,
-                        current_auto_duration_secs: None,
-                    });
+                        result.push(RoomStatus {
+                            url: r.url.clone(),
+                            title,
+                            anchor_name: anchor,
+                            status: "Paused".to_string(),
+                            record_path: None,
+                            live_url: None,
+                            platform,
+                            split_mode: r.split_mode.clone(),
+                            split_custom_secs: r.split_custom_secs,
+                            current_auto_duration_secs: auto_dur,
+                        });
+                    } else if let Some(status) = map.get(&r.url) {
+                        let mut status_clone = status.clone();
+                        status_clone.split_mode = r.split_mode.clone();
+                        status_clone.split_custom_secs = r.split_custom_secs;
+                        result.push(status_clone);
+                    } else {
+                        tracing::debug!("[API_GET_ROOMS] Room {} is in config but NOT in status_map (will show as Idle)", r.url);
+                        result.push(RoomStatus {
+                            url: r.url.clone(),
+                            title: "".to_string(),
+                            anchor_name: r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
+                            status: "Idle".to_string(),
+                            record_path: None,
+                            live_url: None,
+                            platform: "".to_string(),
+                            split_mode: r.split_mode.clone(),
+                            split_custom_secs: r.split_custom_secs,
+                            current_auto_duration_secs: None,
+                        });
+                    }
                 }
+                tracing::debug!("[API_GET_ROOMS] Returning {} rooms from config-based path", result.len());
+                return Json(result);
             }
-            return Json(result);
+        }
+        Err(e) => {
+            tracing::error!("[API_GET_ROOMS] Failed to load config: {}. Falling back to memory statuses.", e);
         }
     }
 
     // Fallback: If config file read fails or returned 0 rooms while map has items, return memory statuses!
+    tracing::debug!("[API_GET_ROOMS] Using fallback: returning {} rooms from memory status map", map.len());
     for status in map.values() {
         result.push(status.clone());
     }
