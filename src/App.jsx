@@ -410,21 +410,12 @@ function App() {
       tg_auto_upload: tgAutoUpload,
       tg_api_url: tgApiUrl.trim() || null,
     };
-    if ((!updatedConfig.rooms || updatedConfig.rooms.length === 0) && monitoredRooms && monitoredRooms.length > 0) {
-      updatedConfig.rooms = monitoredRooms.map(r => ({
-        url: r.url,
-        name: r.name,
-        quality: r.quality,
-        format: r.format || null,
-      }));
-    }
-
     try {
       await saveConfig(updatedConfig);
       setConfig(updatedConfig);
       showAlert("保存成功", "全局配置保存成功！", "success");
       const fetchedRooms = await getRooms();
-      setMonitoredRooms(fetchedRooms || []);
+      setRooms(fetchedRooms || []);
     } catch (err) {
       showAlert("保存失败", `保存配置失败: ${err}`, "error");
     }
