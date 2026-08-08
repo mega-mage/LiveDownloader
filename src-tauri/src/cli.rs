@@ -60,6 +60,7 @@ pub fn prompt_overwrite(platform: &str) -> bool {
 }
 
 #[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
 pub fn prompt_overwrite(platform: &str) -> bool {
     use std::io::Write;
     print!("平台 '{}' 的 Cookie 已经存在。是否覆盖？[Y/n]: ", platform);
