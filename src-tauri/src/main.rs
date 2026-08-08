@@ -1,4 +1,5 @@
 #![cfg_attr(all(not(debug_assertions), feature = "gui"), windows_subsystem = "windows")]
+#![allow(linker_messages)]
 
 pub mod common;
 mod config;
