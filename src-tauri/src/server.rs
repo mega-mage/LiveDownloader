@@ -36,15 +36,26 @@ async fn auth_middleware(
     headers: HeaderMap,
     request: axum::extract::Request,
     next: Next,
-) -> impl IntoResponse {
+) -> axum::response::Response {
     // Bypass auth for CORS preflight OPTIONS requests
     if request.method() == axum::http::Method::OPTIONS {
-        return Ok(next.run(request).await);
+        return next.run(request).await;
     }
 
     let config = match AppConfig::load_or_create(&state.config_toml_path) {
         Ok(c) => c,
-        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("[AUTH] Failed to load config for auth check: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [
+                    ("Access-Control-Allow-Origin", "*"),
+                    ("Access-Control-Allow-Headers", "*"),
+                    ("Access-Control-Allow-Methods", "*"),
+                ],
+                "Internal server error loading config",
+            ).into_response();
+        }
     };
 
     if let Some(ref expected_token) = config.settings.api_token {
@@ -75,12 +86,21 @@ async fn auth_middleware(
             }
 
             if !valid {
-                return Err(StatusCode::UNAUTHORIZED);
+                tracing::warn!("[AUTH] Unauthorized request to {}", request.uri().path());
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    [
+                        ("Access-Control-Allow-Origin", "*"),
+                        ("Access-Control-Allow-Headers", "*"),
+                        ("Access-Control-Allow-Methods", "*"),
+                    ],
+                    "Unauthorized",
+                ).into_response();
             }
         }
     }
 
-    Ok(next.run(request).await)
+    next.run(request).await
 }
 
 async fn api_get_rooms(state: AxumState<SharedState>) -> impl IntoResponse {

@@ -66,7 +66,7 @@ fn init_logging(config_toml_path: &Path) -> Result<(), Box<dyn std::error::Error
     let _ = tracing_subscriber::registry()
         .with(fmt::layer().with_ansi(true))
         .with(file_layer)
-        .with(EnvFilter::try_new("info").unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,LiveDownloader=debug")))
         .try_init();
 
     Ok(())
