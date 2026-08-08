@@ -9,7 +9,18 @@ const STORAGE_KEY_API_BASE = "ld_api_base_url";
 const STORAGE_KEY_API_TOKEN = "ld_api_token";
 
 export function getApiBaseUrl() {
-  return localStorage.getItem(STORAGE_KEY_API_BASE) || "";
+  const saved = localStorage.getItem(STORAGE_KEY_API_BASE);
+  if (saved !== null && saved !== undefined && saved !== "") {
+    return saved;
+  }
+  if (typeof window !== "undefined" && window.location) {
+    const { protocol, hostname, port } = window.location;
+    if (port === "1420" || hostname === "localhost" || hostname === "127.0.0.1") {
+      return `${protocol}//${hostname}:10730`;
+    }
+    return window.location.origin;
+  }
+  return "";
 }
 
 export function setApiBaseUrl(url) {

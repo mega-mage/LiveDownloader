@@ -5,7 +5,7 @@ edition = "2024"
 default-run = "LiveDownloader"
 
 [features]
-default = ["gui", "server"]
+default = ["gui"]
 gui = ["dep:tauri", "dep:tauri-plugin-opener", "dep:tauri-build"]
 server = ["dep:axum", "dep:tower-http"]
 

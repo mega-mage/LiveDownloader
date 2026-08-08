@@ -130,38 +130,39 @@ pub struct RoomsConfig {
     pub rooms: Vec<LiveUrlConfig>,
 }
 
+pub fn safe_rename<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> Result<(), std::io::Error> {
+    let from = from.as_ref();
+    let to = to.as_ref();
+    if let Err(_e) = std::fs::rename(from, to) {
+        std::fs::copy(from, to)?;
+        let _ = std::fs::remove_file(from);
+    }
+    Ok(())
+}
+
 impl RoomsConfig {
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Self {
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let path = path.as_ref();
         if path.exists() {
-            match std::fs::read_to_string(path) {
-                Ok(toml_str) => {
-                    if toml_str.trim().is_empty() {
-                        tracing::warn!("[ROOMS_LOAD] rooms.toml at {:?} exists but is EMPTY ({} bytes raw)", path, toml_str.len());
-                        return RoomsConfig::default();
-                    }
-                    match toml::from_str::<RoomsConfig>(&toml_str) {
-                        Ok(cfg) => {
-                            tracing::debug!("[ROOMS_LOAD] Loaded {} rooms from {:?}", cfg.rooms.len(), path);
-                            if cfg.rooms.is_empty() {
-                                tracing::warn!("[ROOMS_LOAD] rooms.toml parsed successfully but contains 0 rooms!");
-                            }
-                            return cfg;
-                        }
-                        Err(e) => {
-                            tracing::error!("[ROOMS_LOAD] Failed to parse rooms.toml at {:?}: {}", path, e);
-                            tracing::debug!("[ROOMS_LOAD] rooms.toml content ({} bytes): {:?}", toml_str.len(), &toml_str[..toml_str.len().min(500)]);
-                        }
-                    }
+            let toml_str = std::fs::read_to_string(path)?;
+            if toml_str.trim().is_empty() {
+                tracing::warn!("[ROOMS_LOAD] rooms.toml at {:?} exists but is empty", path);
+                return Err("rooms.toml exists but is empty".into());
+            }
+            match toml::from_str::<RoomsConfig>(&toml_str) {
+                Ok(cfg) => {
+                    tracing::debug!("[ROOMS_LOAD] Loaded {} rooms from {:?}", cfg.rooms.len(), path);
+                    Ok(cfg)
                 }
                 Err(e) => {
-                    tracing::error!("[ROOMS_LOAD] Failed to read rooms.toml at {:?}: {}", path, e);
+                    tracing::error!("[ROOMS_LOAD] Failed to parse rooms.toml at {:?}: {}", path, e);
+                    Err(Box::new(e))
                 }
             }
         } else {
-            tracing::info!("[ROOMS_LOAD] rooms.toml does not exist at {:?}, returning empty", path);
+            tracing::info!("[ROOMS_LOAD] rooms.toml does not exist at {:?}, returning empty config", path);
+            Ok(RoomsConfig::default())
         }
-        RoomsConfig::default()
     }
 
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -172,7 +173,7 @@ impl RoomsConfig {
         }
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, toml_str)?;
-        std::fs::rename(&tmp_path, path)?;
+        safe_rename(&tmp_path, path)?;
         Ok(())
     }
 }
@@ -310,8 +311,15 @@ impl AppConfig {
 
         // Always load rooms from rooms.toml in the same directory
         let rooms_path = path.with_file_name("rooms.toml");
-        let rooms_cfg = RoomsConfig::load_from_file(&rooms_path);
-        config.rooms = rooms_cfg.rooms;
+        match RoomsConfig::load_from_file(&rooms_path) {
+            Ok(rooms_cfg) => {
+                config.rooms = rooms_cfg.rooms;
+            }
+            Err(e) => {
+                tracing::error!("[CONFIG] Failed to load rooms.toml: {}. Failing AppConfig load to prevent room wipe.", e);
+                return Err(e);
+            }
+        }
 
         Ok(config)
     }
@@ -334,7 +342,7 @@ impl AppConfig {
         }
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, toml_str)?;
-        std::fs::rename(&tmp_path, path)?;
+        safe_rename(&tmp_path, path)?;
 
         // Exclusively save rooms to rooms.toml
         let rooms_path = path.with_file_name("rooms.toml");

@@ -258,7 +258,6 @@ function App() {
   const [remoteApiBase, setRemoteApiBase] = useState(getApiBaseUrl());
   const [remoteApiToken, setRemoteApiToken] = useState(getApiToken());
   const [showConnectionSettings, setShowConnectionSettings] = useState(false);
-  const [apiError, setApiError] = useState(null);
 
   // Engine Pause Status
   const [isEnginePaused, setIsEnginePaused] = useState(true);
@@ -411,12 +410,12 @@ function App() {
       tg_auto_upload: tgAutoUpload,
       tg_api_url: tgApiUrl.trim() || null,
     };
-    if ((!updatedConfig.rooms || updatedConfig.rooms.length === 0) && rooms && rooms.length > 0) {
-      updatedConfig.rooms = rooms.map(r => ({
+    if ((!updatedConfig.rooms || updatedConfig.rooms.length === 0) && monitoredRooms && monitoredRooms.length > 0) {
+      updatedConfig.rooms = monitoredRooms.map(r => ({
         url: r.url,
-        name: r.name || r.anchor_name || null,
-        quality: r.quality || null,
-        format: r.format || r.video_save_type || null,
+        name: r.name,
+        quality: r.quality,
+        format: r.format || null,
       }));
     }
 
@@ -425,7 +424,7 @@ function App() {
       setConfig(updatedConfig);
       showAlert("保存成功", "全局配置保存成功！", "success");
       const fetchedRooms = await getRooms();
-      setRooms(fetchedRooms || []);
+      setMonitoredRooms(fetchedRooms || []);
     } catch (err) {
       showAlert("保存失败", `保存配置失败: ${err}`, "error");
     }
@@ -455,14 +454,12 @@ function App() {
       try {
         const res = await getRooms();
         setRooms(res);
-        setApiError(null);
         const paused = await getEngineStatus();
         setIsEnginePaused(paused);
         const cfg = await getConfig();
         setConfig(cfg);
       } catch (err) {
         console.error("Error polling backend details:", err);
-        setApiError(err.message || String(err));
       }
     };
 
@@ -825,18 +822,6 @@ function App() {
             </button>
           </div>
         </header>
-
-        {apiError && (
-          <div className="mx-6 mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-500 text-xs font-semibold flex items-center justify-between">
-            <span>⚠️ 无法连接到后端 API 服务: {apiError}。请检查系统设置中的 API 地址与 Token 配置。</span>
-            <button 
-              onClick={() => setActiveTab("settings")} 
-              className="ml-3 px-2 py-1 bg-red-500 text-white rounded text-xxs font-bold hover:bg-red-600"
-            >
-              前往设置
-            </button>
-          </div>
-        )}
 
         {/* Dynamic Inner Tab pages */}
         <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
