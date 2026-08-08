@@ -545,9 +545,11 @@ async fn monitor_room_loop(
                                                         }
                                                     }
 
-                                                    let mut map = statuses_cloned.write().await;
-                                                    if let Some(room) = map.get_mut(&url_str) {
-                                                        room.record_path = Some(merged_dest.to_string_lossy().to_string());
+                                                    {
+                                                        let mut map = statuses_cloned.write().await;
+                                                        if let Some(room) = map.get_mut(&url_str) {
+                                                            room.record_path = Some(merged_dest.to_string_lossy().to_string());
+                                                        }
                                                     }
                                                     save_room_statuses(&statuses_cloned).await;
                                                 }
@@ -586,9 +588,11 @@ async fn monitor_room_loop(
                                             }
                                         }
 
-                                        let mut map = statuses_cloned.write().await;
-                                        if let Some(room) = map.get_mut(&url_str) {
-                                            room.record_path = Some(merged_dest.to_string_lossy().to_string());
+                                        {
+                                            let mut map = statuses_cloned.write().await;
+                                            if let Some(room) = map.get_mut(&url_str) {
+                                                room.record_path = Some(merged_dest.to_string_lossy().to_string());
+                                            }
                                         }
                                         save_room_statuses(&statuses_cloned).await;
                                     }
