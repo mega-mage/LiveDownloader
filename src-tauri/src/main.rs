@@ -113,6 +113,15 @@ fn run_gui(config_toml_path: PathBuf) -> Result<(), Box<dyn std::error::Error + 
     let proxy_listener_cell = std::sync::Mutex::new(Some(proxy_listener));
     let task_notify = change_notify.clone();
 
+    #[cfg(feature = "server")]
+    let config_toml_path_for_server = config_toml_path.clone();
+    #[cfg(feature = "server")]
+    let room_statuses_for_server = room_statuses.clone();
+    #[cfg(feature = "server")]
+    let change_notify_for_server = change_notify.clone();
+    #[cfg(feature = "server")]
+    let is_paused_for_server = is_paused.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
@@ -192,6 +201,28 @@ fn run_gui(config_toml_path: PathBuf) -> Result<(), Box<dyn std::error::Error + 
                     StreamProxy::start_with_listener(tokio_listener);
                 });
                 info!("Stream proxy server started.");
+            }
+
+            #[cfg(feature = "server")]
+            {
+                let server_port = AppConfig::load_or_create(&config_toml_path_for_server)
+                    .map(|c| c.settings.server_port)
+                    .unwrap_or(10730);
+
+                let state_for_server = Arc::new(AppState {
+                    room_statuses: room_statuses_for_server,
+                    config_toml_path: config_toml_path_for_server,
+                    proxy_port,
+                    change_notify: change_notify_for_server,
+                    is_paused: is_paused_for_server,
+                });
+
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = server::start_server(state_for_server, server_port).await {
+                        error!("Failed to start Web API server in GUI mode: {}", e);
+                    }
+                });
+                info!("Web API server started on port {} in GUI mode.", server_port);
             }
 
             Ok(())
