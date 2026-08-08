@@ -117,7 +117,7 @@ async fn api_get_rooms(state: AxumState<SharedState>) -> impl IntoResponse {
             if !config.rooms.is_empty() || map.is_empty() {
                 for r in config.rooms {
                     if r.is_commented {
-                        let (anchor, title, platform, auto_dur) = if let Some(existing) = map.get(&r.url) {
+                        let (anchor, title, platform) = if let Some(existing) = map.get(&r.url) {
                             (
                                 if existing.anchor_name.is_empty() || existing.anchor_name == "未知主播" {
                                     r.name.clone().unwrap_or_else(|| "未知主播".to_string())
@@ -126,14 +126,12 @@ async fn api_get_rooms(state: AxumState<SharedState>) -> impl IntoResponse {
                                 },
                                 existing.title.clone(),
                                 existing.platform.clone(),
-                                existing.current_auto_duration_secs,
                             )
                         } else {
                             (
                                 r.name.clone().unwrap_or_else(|| "未知主播".to_string()),
                                 "".to_string(),
                                 "".to_string(),
-                                None,
                             )
                         };
 
