@@ -776,13 +776,26 @@ function App() {
 
           {/* Engine global controllers & Counters */}
           <div className="flex items-center gap-2">
+            <div className={cn(
+              "hidden sm:flex items-center gap-1.5 p-1 px-2.5 rounded-lg border text-xs shrink-0 h-9 font-bold transition-all duration-300",
+              isEnginePaused
+                ? "bg-amber-950/40 border-amber-800/60 text-amber-400"
+                : "bg-emerald-950/40 border-emerald-800/60 text-emerald-400"
+            )}>
+              <span className={cn(
+                "h-2 w-2 rounded-full",
+                isEnginePaused ? "bg-amber-500" : "bg-emerald-500 animate-pulse"
+              )}></span>
+              <span>{isEnginePaused ? t("engine_status_paused", lang) : t("engine_status_running", lang)}</span>
+            </div>
+
             <Button
               variant={isEnginePaused ? "default" : "outline"}
               className={cn(
                 "h-9 px-4 font-bold text-xs shrink-0 flex items-center gap-1.5 shadow-sm transition-all duration-300",
                 isEnginePaused 
-                  ? "bg-amber-600 hover:bg-amber-500 text-white border-transparent"
-                  : "border-border text-muted-foreground hover:text-foreground"
+                  ? "bg-emerald-600 hover:bg-emerald-500 text-white border-transparent"
+                  : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
               )}
               onClick={handleToggleEngine}
               title={isEnginePaused ? (lang === "zh" ? "点击启动后台轮询监控" : "Click to start polling monitor") : (lang === "zh" ? "点击挂起监控引擎" : "Click to pause monitor engine")}

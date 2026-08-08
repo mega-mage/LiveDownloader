@@ -16,8 +16,10 @@ export const translations = {
     api_not_configured: "未配置",
     active_recording: "正在录制",
     monitored_rooms: "监控任务",
-    start_engine: "开启核心",
+    start_engine: "启动核心",
     pause_engine: "挂起核心",
+    engine_status_running: "核心运行中",
+    engine_status_paused: "核心已挂起",
 
     // Dashboard & Rooms
     realtime_console: "实时工作控制台",
@@ -164,6 +166,8 @@ export const translations = {
     monitored_rooms: "Rooms",
     start_engine: "Start Engine",
     pause_engine: "Pause Engine",
+    engine_status_running: "Engine Active",
+    engine_status_paused: "Engine Paused",
 
     // Dashboard & Rooms
     realtime_console: "Real-time Dashboard Console",
