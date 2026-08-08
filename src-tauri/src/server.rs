@@ -145,15 +145,9 @@ async fn api_get_rooms(state: AxumState<SharedState>) -> impl IntoResponse {
                             record_path: None,
                             live_url: None,
                             platform,
-                            split_mode: r.split_mode.clone(),
-                            split_custom_secs: r.split_custom_secs,
-                            current_auto_duration_secs: auto_dur,
                         });
                     } else if let Some(status) = map.get(&r.url) {
-                        let mut status_clone = status.clone();
-                        status_clone.split_mode = r.split_mode.clone();
-                        status_clone.split_custom_secs = r.split_custom_secs;
-                        result.push(status_clone);
+                        result.push(status.clone());
                     } else {
                         tracing::debug!("[API_GET_ROOMS] Room {} is in config but NOT in status_map (will show as Idle)", r.url);
                         result.push(RoomStatus {
@@ -164,9 +158,6 @@ async fn api_get_rooms(state: AxumState<SharedState>) -> impl IntoResponse {
                             record_path: None,
                             live_url: None,
                             platform: "".to_string(),
-                            split_mode: r.split_mode.clone(),
-                            split_custom_secs: r.split_custom_secs,
-                            current_auto_duration_secs: None,
                         });
                     }
                 }
@@ -192,8 +183,6 @@ pub struct AddRoomRequest {
     url: String,
     name: Option<String>,
     quality: Option<String>,
-    split_mode: Option<String>,
-    split_custom_secs: Option<u64>,
 }
 
 async fn api_add_room(
@@ -217,8 +206,6 @@ async fn api_add_room(
         quality: body.quality.filter(|q| !q.is_empty()),
         video_save_type: None,
         is_commented: false,
-        split_mode: body.split_mode.filter(|s| !s.trim().is_empty()),
-        split_custom_secs: body.split_custom_secs,
     });
     config.save_to_file(&state.config_toml_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     state.change_notify.notify_one();
@@ -277,8 +264,6 @@ async fn api_get_config(state: AxumState<SharedState>) -> impl IntoResponse {
                             quality: None,
                             video_save_type: None,
                             is_commented: false,
-                            split_mode: room.split_mode.clone(),
-                            split_custom_secs: room.split_custom_secs,
                         });
                     }
                     let _ = config.save_to_file(&state.config_toml_path);
@@ -486,8 +471,6 @@ pub struct UpdateRoomConfigRequest {
     name: Option<String>,
     quality: Option<String>,
     video_save_type: Option<String>,
-    split_mode: Option<String>,
-    split_custom_secs: Option<u64>,
 }
 
 async fn api_update_room_config(
@@ -508,8 +491,6 @@ async fn api_update_room_config(
         room.name = body.name.filter(|n| !n.trim().is_empty()).map(|s| s.trim().to_string());
         room.quality = body.quality.filter(|q| !q.trim().is_empty()).map(|s| s.trim().to_string());
         room.video_save_type = body.video_save_type.filter(|f| !f.trim().is_empty()).map(|s| s.trim().to_string());
-        room.split_mode = body.split_mode.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string());
-        room.split_custom_secs = body.split_custom_secs;
         config.save_to_file(&state.config_toml_path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         state.change_notify.notify_one();
         Ok(Json(serde_json::json!({ "ok": true })))
@@ -1014,8 +995,6 @@ mod tests {
             url: "https://live.bilibili.com/123456".to_string(),
             name: Some("TestAnchor".to_string()),
             quality: Some("原画".to_string()),
-            split_mode: None,
-            split_custom_secs: None,
         };
         let res = api_add_room(AxumState(state.clone()), Json(req)).await.into_response();
         assert_eq!(res.status(), StatusCode::OK);

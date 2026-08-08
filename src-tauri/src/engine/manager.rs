@@ -18,12 +18,104 @@ pub struct RoomStatus {
     pub record_path: Option<String>,
     pub live_url: Option<String>, // Direct HLS or playable URL
     pub platform: String,
-    #[serde(default)]
-    pub split_mode: Option<String>,
-    #[serde(default)]
-    pub split_custom_secs: Option<u64>,
-    #[serde(default)]
-    pub current_auto_duration_secs: Option<u64>,
+}
+
+pub fn perform_concat_merge(
+    anchor_dir: &Path,
+    segment_files: &[PathBuf],
+    target_dir: &Path,
+    output_filename: &str,
+) -> Result<PathBuf, String> {
+    if segment_files.is_empty() {
+        return Err("No segment files to merge".to_string());
+    }
+
+    std::fs::create_dir_all(target_dir).map_err(|e| e.to_string())?;
+    let dest_path = target_dir.join(output_filename);
+
+    let ffmpeg_path = crate::engine::recorder::get_ffmpeg_path();
+    let ext = dest_path.extension().and_then(|s| s.to_str()).unwrap_or("ts").to_lowercase();
+
+    if segment_files.len() == 1 {
+        let src = &segment_files[0];
+        let src_ext = src.extension().and_then(|s| s.to_str()).unwrap_or("ts").to_lowercase();
+
+        if src_ext == ext {
+            if let Err(e) = std::fs::rename(src, &dest_path) {
+                debug!("Rename failed, falling back to copy/remove: {}", e);
+                std::fs::copy(src, &dest_path).map_err(|e| e.to_string())?;
+                let _ = std::fs::remove_file(src);
+            }
+            return Ok(dest_path);
+        } else {
+            let mut cmd = std::process::Command::new(&ffmpeg_path);
+            let mut args = vec![
+                "-y".to_string(),
+                "-i".to_string(), src.to_string_lossy().to_string(),
+                "-c".to_string(), "copy".to_string(),
+            ];
+            if ext == "mp4" {
+                args.push("-movflags".to_string());
+                args.push("+faststart".to_string());
+            }
+            args.push(dest_path.to_string_lossy().to_string());
+            cmd.args(&args);
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000);
+            }
+            let output = cmd.output().map_err(|e| e.to_string())?;
+            if !output.status.success() {
+                return Err(format!("FFmpeg remux failed with status: {:?}", output.status));
+            }
+            let _ = std::fs::remove_file(src);
+            return Ok(dest_path);
+        }
+    }
+
+    let concat_list_path = anchor_dir.join(format!("concat_{}.txt", chrono::Local::now().format("%H%M%S_%f")));
+    let mut concat_content = String::new();
+    for file in segment_files {
+        if let Some(filename) = file.file_name().and_then(|s| s.to_str()) {
+            concat_content.push_str(&format!("file '{}'\n", filename.replace("'", "'\\''")));
+        }
+    }
+    std::fs::write(&concat_list_path, concat_content).map_err(|e| e.to_string())?;
+
+    let mut cmd = std::process::Command::new(&ffmpeg_path);
+    let mut args = vec![
+        "-y".to_string(),
+        "-f".to_string(), "concat".to_string(),
+        "-safe".to_string(), "0".to_string(),
+        "-i".to_string(), concat_list_path.to_string_lossy().to_string(),
+        "-c".to_string(), "copy".to_string(),
+    ];
+    if ext == "mp4" {
+        args.push("-movflags".to_string());
+        args.push("+faststart".to_string());
+    }
+    args.push(dest_path.to_string_lossy().to_string());
+    cmd.args(&args);
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    let output = cmd.output().map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_file(&concat_list_path);
+
+    if !output.status.success() {
+        return Err(format!("FFmpeg concat failed with status: {:?}", output.status));
+    }
+
+    for file in segment_files {
+        let _ = std::fs::remove_file(file);
+    }
+
+    Ok(dest_path)
 }
 
 pub struct TaskManager {
@@ -238,9 +330,6 @@ impl TaskManager {
                             record_path: None,
                             live_url: None,
                             platform: handler_name.to_string(),
-                            split_mode: url_cfg.split_mode.clone(),
-                            split_custom_secs: url_cfg.split_custom_secs,
-                            current_auto_duration_secs: None,
                         });
                     }
                 }
@@ -363,17 +452,6 @@ async fn monitor_room_loop(
                 );
                 notifier.notify(&push_title, &push_content, &app_config).await;
                 
-                let (room_split_mode, room_split_custom_secs, current_auto_duration) = {
-                    let r = config.read().await;
-                    let room_cfg = r.rooms.iter().find(|rm| rm.url == url);
-                    let split_m = room_cfg.and_then(|rm| rm.split_mode.clone());
-                    let split_c = room_cfg.and_then(|rm| rm.split_custom_secs);
-
-                    let st_map = statuses.read().await;
-                    let auto_dur = st_map.get(&url).and_then(|st| st.current_auto_duration_secs);
-                    (split_m, split_c, auto_dur)
-                };
-
                 // Update shared status state
                 {
                     let mut map = statuses.write().await;
@@ -392,9 +470,6 @@ async fn monitor_room_loop(
                             }
                         }),
                         platform: handler.name().to_string(),
-                        split_mode: room_split_mode.clone(),
-                        split_custom_secs: room_split_custom_secs,
-                        current_auto_duration_secs: current_auto_duration,
                     });
                 }
                 save_room_statuses(&statuses).await;
@@ -407,9 +482,6 @@ async fn monitor_room_loop(
                     &app_config,
                     &config_path,
                     custom_format.as_deref(),
-                    room_split_mode.as_deref(),
-                    room_split_custom_secs,
-                    current_auto_duration,
                 ).await {
                     Ok(mut session) => {
                         info!("Recording started for [{}], output file: {:?}", display_name, session.output_file_path);
@@ -422,76 +494,65 @@ async fn monitor_room_loop(
                         }
                         save_room_statuses(&statuses).await;
 
-                        // Segment monitoring task for real-time file moving and Telegram auto-upload
+                        // Segment monitoring task for size-threshold concat merging and Telegram auto-upload
                         let output_template = session.output_file_path.clone();
                         let target_dir_path = session.target_dir_path.clone();
+                        let filename_base = session.filename_base.clone();
+                        let effective_ext = session.effective_ext.clone();
                         let app_config_cloned = app_config.clone();
                         let display_name_str = display_name.to_string();
                         let notifier_cloned = crate::engine::notifier::Notifier::new();
                         let url_str = url.clone();
                         let statuses_cloned = statuses.clone();
-                        let room_split_mode_str = room_split_mode.clone().unwrap_or_else(|| "auto".to_string());
                         
                         let (poll_stop_tx, mut poll_stop_rx) = tokio::sync::watch::channel(false);
                         
                         let segment_handle = tokio::spawn(async move {
                             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
                             let mut processed_files: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+                            let mut part_index = 1;
+
+                            let anchor_dir = match output_template.parent() {
+                                Some(p) => p.to_path_buf(),
+                                None => return,
+                            };
+                            let target_mb = app_config_cloned.settings.split_size_mb;
                             
                             loop {
                                 tokio::select! {
                                     _ = interval.tick() => {
                                         let completed = find_completed_segments(&output_template, true);
-                                        for file_path in completed {
-                                            if processed_files.contains(&file_path) {
-                                                continue;
-                                            }
-                                            processed_files.insert(file_path.clone());
+                                        let unmerged: Vec<PathBuf> = completed.into_iter().filter(|f| !processed_files.contains(f)).collect();
 
-                                            if app_config_cloned.push.tg_auto_upload {
-                                                let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                                                let caption = format!("【自动上传切片】\n主播: {}\n文件: {}", display_name_str, file_name);
-                                                if let Err(e) = notifier_cloned.upload_file_to_telegram(&file_path, &caption, &app_config_cloned).await {
-                                                    error!("Failed to upload segment {:?} to Telegram: {}", file_path, e);
-                                                }
-                                            }
-                                            if let Some(filename) = file_path.file_name() {
-                                                let _ = std::fs::create_dir_all(&target_dir_path);
-                                                let dest = target_dir_path.join(filename);
-                                                let actual_bytes = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
-                                                info!("Real-time segment move: Moving completed segment from downloading to final dir: {:?}", dest);
-                                                if let Err(e) = std::fs::rename(&file_path, &dest) {
-                                                    debug!("Rename failed for segment, falling back to copy/remove: {}", e);
-                                                    if let Err(err) = std::fs::copy(&file_path, &dest).and_then(|_| std::fs::remove_file(&file_path)) {
-                                                        error!("Failed to move completed segment {:?} to {:?}: {}", file_path, dest, err);
+                                        let unmerged_bytes: u64 = unmerged.iter().map(|f| std::fs::metadata(f).map(|m| m.len()).unwrap_or(0)).sum();
+                                        let unmerged_mb = unmerged_bytes as f64 / (1024.0 * 1024.0);
+
+                                        if target_mb > 0 && unmerged_mb >= target_mb as f64 && !unmerged.is_empty() {
+                                            let part_filename = format!("{}_part{}.{}", filename_base, part_index, effective_ext);
+                                            info!("Split size limit ({} MB) reached for [{}]. Merging {} segments ({:.2} MB) into {}", target_mb, display_name_str, unmerged.len(), unmerged_mb, part_filename);
+
+                                            match perform_concat_merge(&anchor_dir, &unmerged, &target_dir_path, &part_filename) {
+                                                Ok(merged_dest) => {
+                                                    for f in &unmerged {
+                                                        processed_files.insert(f.clone());
                                                     }
-                                                }
+                                                    part_index += 1;
 
-                                                // Dynamic Auto-Adjustment Logic for "auto" split mode
-                                                if room_split_mode_str.to_lowercase() == "auto" {
-                                                    let actual_mb = actual_bytes as f64 / (1024.0 * 1024.0);
-                                                    let target_mb = app_config_cloned.settings.split_size_mb.max(10) as f64;
-                                                    let target_kbps = app_config_cloned.settings.split_video_bitrate_kbps.max(500) as f64;
-                                                    let calculated_secs = ((target_mb * 1024.0 * 8.0) / target_kbps).round() as u64;
-                                                    let initial_default = calculated_secs.clamp(180, 14400);
-                                                    
-                                                    if actual_mb > 1.0 {
-                                                        let mut map = statuses_cloned.write().await;
-                                                        if let Some(room) = map.get_mut(&url_str) {
-                                                            let current_secs = room.current_auto_duration_secs.unwrap_or(initial_default);
-                                                            let is_in_target_range = actual_mb >= target_mb * 0.90 && actual_mb <= target_mb * 1.10;
-                                                            
-                                                            if is_in_target_range {
-                                                                info!("Auto split calculation for [{}]: Segment size {:.2} MB is within target ({:.0} MB ±10%). Duration remains {}s.", display_name_str, actual_mb, target_mb, current_secs);
-                                                            } else {
-                                                                let new_secs = ((current_secs as f64) * (target_mb / actual_mb)).round() as u64;
-                                                                let clamped_secs = new_secs.clamp(180, 10800); // 3 mins to 3 hours
-                                                                info!("Auto split calculation for [{}]: 1st segment was {:.2} MB in {}s. Adjusting next segment duration to {}s (~{:.1} mins) to target {:.0} MB.", display_name_str, actual_mb, current_secs, clamped_secs, clamped_secs as f64 / 60.0, target_mb);
-                                                                room.current_auto_duration_secs = Some(clamped_secs);
-                                                            }
+                                                    if app_config_cloned.push.tg_auto_upload {
+                                                        let caption = format!("【自动上传切片】\n主播: {}\n文件: {}", display_name_str, part_filename);
+                                                        if let Err(e) = notifier_cloned.upload_file_to_telegram(&merged_dest, &caption, &app_config_cloned).await {
+                                                            error!("Failed to upload merged part {:?} to Telegram: {}", merged_dest, e);
                                                         }
-                                                        save_room_statuses(&statuses_cloned).await;
                                                     }
+
+                                                    let mut map = statuses_cloned.write().await;
+                                                    if let Some(room) = map.get_mut(&url_str) {
+                                                        room.record_path = Some(merged_dest.to_string_lossy().to_string());
+                                                    }
+                                                    save_room_statuses(&statuses_cloned).await;
+                                                }
+                                                Err(e) => {
+                                                    error!("Failed to merge segments for [{}]: {}", display_name_str, e);
                                                 }
                                             }
                                         }
@@ -506,28 +567,33 @@ async fn monitor_room_loop(
                             
                             // One final check after FFmpeg exits
                             let completed = find_completed_segments(&output_template, false);
-                            for file_path in completed {
-                                if processed_files.contains(&file_path) {
-                                    continue;
-                                }
-                                processed_files.insert(file_path.clone());
+                            let unmerged: Vec<PathBuf> = completed.into_iter().filter(|f| !processed_files.contains(f)).collect();
 
-                                if app_config_cloned.push.tg_auto_upload {
-                                    let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                                    let caption = format!("【自动上传切片】\n主播: {}\n文件: {}", display_name_str, file_name);
-                                    if let Err(e) = notifier_cloned.upload_file_to_telegram(&file_path, &caption, &app_config_cloned).await {
-                                        error!("Failed to upload final segment {:?} to Telegram: {}", file_path, e);
-                                    }
-                                }
-                                if let Some(filename) = file_path.file_name() {
-                                    let _ = std::fs::create_dir_all(&target_dir_path);
-                                    let dest = target_dir_path.join(filename);
-                                    info!("Finalizing download: Moving final segment from downloading to final dir: {:?}", dest);
-                                    if let Err(e) = std::fs::rename(&file_path, &dest) {
-                                        debug!("Rename failed for final segment, falling back to copy/remove: {}", e);
-                                        if let Err(err) = std::fs::copy(&file_path, &dest).and_then(|_| std::fs::remove_file(&file_path)) {
-                                            error!("Failed to move final segment {:?} to {:?}: {}", file_path, dest, err);
+                            if !unmerged.is_empty() {
+                                let final_filename = if part_index == 1 {
+                                    format!("{}.{}", filename_base, effective_ext)
+                                } else {
+                                    format!("{}_part{}.{}", filename_base, part_index, effective_ext)
+                                };
+                                info!("Finalizing download for [{}]: Merging {} remaining segments into {}", display_name_str, unmerged.len(), final_filename);
+
+                                match perform_concat_merge(&anchor_dir, &unmerged, &target_dir_path, &final_filename) {
+                                    Ok(merged_dest) => {
+                                        if app_config_cloned.push.tg_auto_upload {
+                                            let caption = format!("【自动上传切片】\n主播: {}\n文件: {}", display_name_str, final_filename);
+                                            if let Err(e) = notifier_cloned.upload_file_to_telegram(&merged_dest, &caption, &app_config_cloned).await {
+                                                error!("Failed to upload final segment {:?} to Telegram: {}", merged_dest, e);
+                                            }
                                         }
+
+                                        let mut map = statuses_cloned.write().await;
+                                        if let Some(room) = map.get_mut(&url_str) {
+                                            room.record_path = Some(merged_dest.to_string_lossy().to_string());
+                                        }
+                                        save_room_statuses(&statuses_cloned).await;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to merge final segments for [{}]: {}", display_name_str, e);
                                     }
                                 }
                             }
@@ -597,9 +663,6 @@ async fn monitor_room_loop(
                             record_path: None,
                             live_url: None,
                             platform: handler.name().to_string(),
-                            split_mode: room_split_mode,
-                            split_custom_secs: room_split_custom_secs,
-                            current_auto_duration_secs: current_auto_duration,
                         });
                     }
                 }
@@ -803,23 +866,40 @@ pub fn scan_and_move_leftovers(config_toml_path: &Path, save_path: &Path) {
         return;
     }
 
-    if let Ok(entries) = std::fs::read_dir(&downloading_dir) {
-        for entry in entries.flatten() {
-            let src = entry.path();
-            if src.is_file() {
-                // Check if file is currently open/locked by FFmpeg or another process
-                if std::fs::OpenOptions::new().write(true).open(&src).is_err() {
-                    debug!("Startup cleaner: File {:?} is currently in use by another process, skipping for now", src);
-                    continue;
+    if let Ok(anchor_entries) = std::fs::read_dir(&downloading_dir) {
+        for anchor_entry in anchor_entries.flatten() {
+            let anchor_path = anchor_entry.path();
+            if anchor_path.is_dir() {
+                if let Ok(files) = std::fs::read_dir(&anchor_path) {
+                    let mut unlocked_files: Vec<PathBuf> = Vec::new();
+                    for file_entry in files.flatten() {
+                        let src = file_entry.path();
+                        if src.is_file() {
+                            if std::fs::OpenOptions::new().write(true).open(&src).is_ok() {
+                                unlocked_files.push(src);
+                            } else {
+                                debug!("Startup cleaner: File {:?} is locked, skipping", src);
+                            }
+                        }
+                    }
+                    if !unlocked_files.is_empty() {
+                        unlocked_files.sort();
+                        let anchor_name = anchor_entry.file_name().to_string_lossy().to_string();
+                        let now_str = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+                        let out_name = format!("{}_leftover_{}.ts", anchor_name, now_str);
+                        info!("Startup cleaner: Merging {} leftover segment files for anchor [{}] into {}", unlocked_files.len(), anchor_name, out_name);
+                        let _ = perform_concat_merge(&anchor_path, &unlocked_files, save_path, &out_name);
+                    }
                 }
-
-                if let Some(name) = entry.file_name().to_str() {
-                    let dest = save_path.join(name);
-                    info!("Startup cleaner: Moving leftover file from downloading to download dir: {:?}", dest);
-                    if let Err(e) = std::fs::rename(&src, &dest) {
-                        debug!("Rename failed for leftover file, falling back to copy/remove: {}", e);
-                        if let Err(err) = std::fs::copy(&src, &dest).and_then(|_| std::fs::remove_file(&src)) {
-                            warn!("Startup cleaner: Could not move leftover file {:?} to {:?}: {}", src, dest, err);
+            } else if anchor_path.is_file() {
+                if std::fs::OpenOptions::new().write(true).open(&anchor_path).is_ok() {
+                    if let Some(name) = anchor_entry.file_name().to_str() {
+                        let dest = save_path.join(name);
+                        info!("Startup cleaner: Moving leftover file to save_path: {:?}", dest);
+                        if let Err(_e) = std::fs::rename(&anchor_path, &dest) {
+                            if let Err(err) = std::fs::copy(&anchor_path, &dest).and_then(|_| std::fs::remove_file(&anchor_path)) {
+                                warn!("Startup cleaner move failed: {}", err);
+                            }
                         }
                     }
                 }

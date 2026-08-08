@@ -50,14 +50,8 @@ export function SettingsSection({
   setUseProxy,
   proxyAddr,
   setProxyAddr,
-  splitMode,
-  setSplitMode,
-  splitTimeSecs,
-  setSplitTimeSecs,
   splitSizeMb,
   setSplitSizeMb,
-  splitVideoBitrateKbps,
-  setSplitVideoBitrateKbps,
   pushChannels,
   setPushChannels,
   dingtalkApi,
@@ -103,10 +97,7 @@ export function SettingsSection({
       updatedConfig.settings.delay_default = numVal(pollInterval, 300);
       successMsg = lang === "zh" ? "录制与保存基本配置保存成功！" : "Basic recording settings saved successfully!";
     } else if (sectionKey === "segment") {
-      updatedConfig.settings.split_mode = splitMode || "time";
-      updatedConfig.settings.split_time_secs = numVal(splitTimeSecs, 1200);
       updatedConfig.settings.split_size_mb = numVal(splitSizeMb, 1024);
-      updatedConfig.settings.split_video_bitrate_kbps = numVal(splitVideoBitrateKbps, 8000);
       successMsg = lang === "zh" ? "录制分段切片设置保存成功！" : "Segment settings saved successfully!";
     } else if (sectionKey === "proxy") {
       updatedConfig.settings.use_proxy = useProxy === "是";
@@ -255,14 +246,14 @@ export function SettingsSection({
             </CardTitle>
             <CardDescription className="text-xs text-muted-foreground mt-1">
               {lang === "zh"
-                ? "配置直播保存时的自动分段切片模式（支持无缝按时长切片或按文件大小切片）"
-                : "Configure video/audio segmentation mode (Seamless duration or size-based splitting)"}
+                ? "配置直播录制时的分段切片与自动合并输出体积"
+                : "Configure segment auto-concatenation size limit for recordings"}
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 space-y-4">
             <div className="space-y-2 max-w-md">
               <label className="text-xs font-bold text-foreground/80">
-                {lang === "zh" ? "Auto 模式全局目标分段体积 (MB)" : "Global Target File Size for Auto Mode (MB)"}
+                {lang === "zh" ? "分段切片目标体积 (MB)" : "Target Segment File Size (MB)"}
               </label>
               <Input
                 type="number"
@@ -272,8 +263,8 @@ export function SettingsSection({
               />
               <p className="text-xxs text-emerald-600 dark:text-emerald-400 font-medium leading-relaxed">
                 {lang === "zh"
-                  ? "✨ 直播间选为 Auto 自动模式时，系统会先录制 10 分钟切片，根据实测体积动态自动算调后续切片时长，使文件稳定保持在目标体积（如 1024 MB = 1GB ±10%）。可在各直播间设置中独立调整切片策略（Auto / 自定义时间 / 不切片）。"
-                  : "✨ In Auto mode, system records a 10-minute initial segment, measures actual size, and dynamically adjusts future segment duration to hit this target (e.g. 1024 MB ±10%). Mode can be configured per live room."}
+                  ? "✨ 录制时默认每 10 分钟生成切片落地于 downloading/[主播名]/ 独立目录中。当已闭合切片总体积达到设定的 MB 值（如 1024 MB = 1GB），或主播下播时，系统会自动无损合并输出至保存目录。设为 0 表示整场直播合并为单文件。"
+                  : "✨ Segments are written every 10 mins into downloading/[Streamer]/ subfolder. When accumulated closed segments reach this MB target (e.g. 1024 MB), or when stream ends, they auto-concat into final output directory. Set to 0 to output single file per live session."}
               </p>
             </div>
           </CardContent>

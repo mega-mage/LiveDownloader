@@ -272,10 +272,7 @@ function App() {
   const [useProxy, setUseProxy] = useState("否");
   const [proxyAddr, setProxyAddr] = useState("");
   const [pollInterval, setPollInterval] = useState("60");
-  const [splitMode, setSplitMode] = useState("time");
-  const [splitTimeSecs, setSplitTimeSecs] = useState("1200");
   const [splitSizeMb, setSplitSizeMb] = useState("1024");
-  const [splitVideoBitrateKbps, setSplitVideoBitrateKbps] = useState("8000");
   const [cookies, setCookies] = useState({});
   const [pushChannels, setPushChannels] = useState([]);
   const [dingtalkApi, setDingtalkApi] = useState("");
@@ -390,10 +387,7 @@ function App() {
       use_proxy: useProxy === "是",
       proxy_addr: proxyAddr.trim() || null,
       delay_default: numVal(pollInterval, 300),
-      split_mode: splitMode || "time",
-      split_time_secs: numVal(splitTimeSecs, 1200),
       split_size_mb: numVal(splitSizeMb, 1024),
-      split_video_bitrate_kbps: numVal(splitVideoBitrateKbps, 8000),
     };
 
     const cleanCookies = {};
@@ -422,8 +416,6 @@ function App() {
         name: r.name,
         quality: r.quality,
         format: r.format || null,
-        split_mode: r.split_mode || null,
-        split_custom_secs: r.split_custom_secs || null,
       }));
     }
 
@@ -525,10 +517,7 @@ function App() {
           setUseProxy(res.settings.use_proxy ? "是" : "否");
           setProxyAddr(res.settings.proxy_addr || "");
           setPollInterval(res.settings.delay_default !== undefined ? String(res.settings.delay_default) : "300");
-          setSplitMode(res.settings.split_mode || "time");
-          setSplitTimeSecs(res.settings.split_time_secs !== undefined ? String(res.settings.split_time_secs) : "1200");
           setSplitSizeMb(res.settings.split_size_mb !== undefined ? String(res.settings.split_size_mb) : "1024");
-          setSplitVideoBitrateKbps(res.settings.split_video_bitrate_kbps !== undefined ? String(res.settings.split_video_bitrate_kbps) : "8000");
         }
         if (res.cookies) {
           setCookies(res.cookies);
@@ -926,14 +915,8 @@ function App() {
               setTgApiUrl={setTgApiUrl}
               tgAutoUpload={tgAutoUpload}
               setTgAutoUpload={setTgAutoUpload}
-              splitMode={splitMode}
-              setSplitMode={setSplitMode}
-              splitTimeSecs={splitTimeSecs}
-              setSplitTimeSecs={setSplitTimeSecs}
               splitSizeMb={splitSizeMb}
               setSplitSizeMb={setSplitSizeMb}
-              splitVideoBitrateKbps={splitVideoBitrateKbps}
-              setSplitVideoBitrateKbps={setSplitVideoBitrateKbps}
               cookies={cookies}
               setCookieModal={setCookieModal}
               handleSaveConfig={handleSaveConfig}

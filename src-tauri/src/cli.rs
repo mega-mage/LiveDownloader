@@ -221,8 +221,6 @@ fn handle_cli_add(config_path: &Path, args: &[String]) -> String {
             quality,
             video_save_type: None,
             is_commented: false,
-            split_mode: None,
-            split_custom_secs: None,
         });
 
         if let Err(e) = config.save_to_file(config_path) {

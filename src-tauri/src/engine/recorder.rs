@@ -13,6 +13,8 @@ pub struct RecordSession {
     stop_tx: Option<oneshot::Sender<()>>,
     pub output_file_path: PathBuf,
     pub target_dir_path: PathBuf,
+    pub filename_base: String,
+    pub effective_ext: String,
 }
 
 impl RecordSession {
@@ -57,15 +59,14 @@ impl Recorder {
         Self
     }
 
-    /// Construct output directory and file path template according to AppConfig.
-    /// Returns (dir_path, file_path, effective_extension).
+    /// Construct output directory and base filename according to AppConfig.
+    /// Returns (dir_path, filename_base, effective_extension).
     pub fn build_paths(
         config: &AppConfig,
         anchor_name: &str,
         title: &str,
-        split_by_time: bool,
         custom_format: Option<&str>,
-    ) -> (PathBuf, PathBuf, String) {
+    ) -> (PathBuf, String, String) {
         let now = Local::now();
         let time_str = now.format("%Y-%m-%d_%H-%M-%S").to_string();
         
@@ -73,7 +74,11 @@ impl Recorder {
         let clean_anchor = sanitize_filename(anchor_name);
         let clean_title = sanitize_filename(title);
         
-        let dir_path = config.settings.save_path.clone();
+        let dir_path = if config.settings.folder_by_author {
+            config.settings.save_path.join(&clean_anchor)
+        } else {
+            config.settings.save_path.clone()
+        };
         
         // Base filename containing anchor, title (if enabled/available), and timestamp
         let filename_base = if config.settings.filename_by_title || (!clean_title.is_empty() && clean_title != "抖音直播间" && clean_title != "直播间") {
@@ -95,14 +100,7 @@ impl Recorder {
         };
         let ext = ext.to_string(); // own the string to outlive raw_fmt
         
-        let filename = if split_by_time {
-            format!("{}_%03d.{}", filename_base, ext)
-        } else {
-            format!("{}.{}", filename_base, ext)
-        };
-        
-        let file_path = dir_path.join(&filename);
-        (dir_path, file_path, ext)
+        (dir_path, filename_base, ext)
     }
 
     /// Start a recording session using FFmpeg
@@ -114,41 +112,9 @@ impl Recorder {
         config: &AppConfig,
         config_toml_path: &std::path::Path,
         custom_format: Option<&str>,
-        room_split_mode: Option<&str>,
-        room_split_custom_secs: Option<u64>,
-        room_auto_duration_secs: Option<u64>,
     ) -> Result<RecordSession, Box<dyn std::error::Error + Send + Sync>> {
-        // Resolve split mode: room setting first, fallback to global settings
-        let mode = room_split_mode
-            .map(|s| s.to_lowercase())
-            .unwrap_or_else(|| config.settings.split_mode.to_lowercase());
-
-        let (enable_split, segment_time_secs) = match mode.as_str() {
-            "none" | "off" | "false" => (false, 0u64),
-            "custom" => {
-                let secs = room_split_custom_secs
-                    .unwrap_or(config.settings.split_time_secs)
-                    .max(10);
-                (true, secs)
-            }
-            "time" => {
-                let secs = config.settings.split_time_secs.max(10);
-                (true, secs)
-            }
-            "auto" | _ => {
-                // Auto mode: calculate initial segment duration from target split_size_mb and video bitrate
-                let target_mb = config.settings.split_size_mb.max(10) as f64;
-                let target_kbps = config.settings.split_video_bitrate_kbps.max(500) as f64;
-                let calculated_secs = ((target_mb * 1024.0 * 8.0) / target_kbps).round() as u64;
-                let initial_default = calculated_secs.clamp(180, 14400); // 3 mins to 4 hours
-                let secs = room_auto_duration_secs.unwrap_or(initial_default).max(10);
-                (true, secs)
-            }
-        };
-
-        let segment_time_str = segment_time_secs.to_string();
-
-        let (dir_path, file_path, effective_ext) = Self::build_paths(config, anchor_name, title, enable_split, custom_format);
+        let (dir_path, filename_base, effective_ext) = Self::build_paths(config, anchor_name, title, custom_format);
+        let clean_anchor = sanitize_filename(anchor_name);
 
         // Extract headers from stream URLs (passed by platform plugin)
         let mut user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36".to_string();
@@ -164,13 +130,20 @@ impl Recorder {
             }
         }
 
-        // Create downloading directory inside config directory (e.g. ~/.config/LiveDownloader/downloading)
-        let downloading_dir = crate::config::get_downloading_dir(config_toml_path);
+        // Create dedicated downloading directory per anchor inside downloading folder
+        // e.g. ~/.config/LiveDownloader/downloading/[主播名]/
+        let downloading_dir = crate::config::get_downloading_dir(config_toml_path).join(&clean_anchor);
+        std::fs::create_dir_all(&downloading_dir)?;
 
-        let filename_str = file_path.file_name().ok_or("Invalid filename")?.to_str().ok_or("Invalid filename encoding")?;
-        let downloading_file_path = downloading_dir.join(filename_str);
+        // Default segment duration is fixed at 10 minutes (600 seconds)
+        let segment_ext = match effective_ext.as_str() {
+            "mp3" => "mp3",
+            "m4a" => "m4a",
+            _ => "ts",
+        };
+        let downloading_file_path = downloading_dir.join(format!("{}_%03d.{}", filename_base, segment_ext));
 
-        // Create target directory if it doesn't exist
+        // Create target save directory if it doesn't exist
         if let Err(e) = std::fs::create_dir_all(&dir_path) {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
                 tracing::error!(
@@ -237,10 +210,8 @@ impl Recorder {
         args.push("-avoid_negative_ts".to_string());
         args.push("1".to_string());
         
-        // Output format: use effective_ext resolved by build_paths (respects custom_format)
-        let ext = effective_ext.as_str();
-        
-        match ext {
+        // Output format: use fixed 10-minute (600s) segmentation
+        match effective_ext.as_str() {
             "mp3" => {
                 args.push("-map".to_string());
                 args.push("0:a".to_string());
@@ -248,20 +219,14 @@ impl Recorder {
                 args.push("libmp3lame".to_string());
                 args.push("-ab".to_string());
                 args.push("320k".to_string());
-                
-                if enable_split {
-                    args.push("-f".to_string());
-                    args.push("segment".to_string());
-                    args.push("-segment_time".to_string());
-                    args.push(segment_time_str.clone());
-                    args.push("-reset_timestamps".to_string());
-                    args.push("1".to_string());
-                    args.push("-segment_format".to_string());
-                    args.push("mp3".to_string());
-                } else {
-                    args.push("-f".to_string());
-                    args.push("mp3".to_string());
-                }
+                args.push("-f".to_string());
+                args.push("segment".to_string());
+                args.push("-segment_time".to_string());
+                args.push("600".to_string());
+                args.push("-reset_timestamps".to_string());
+                args.push("1".to_string());
+                args.push("-segment_format".to_string());
+                args.push("mp3".to_string());
             }
             "m4a" => {
                 args.push("-map".to_string());
@@ -272,22 +237,16 @@ impl Recorder {
                 args.push("aac_adtstoasc".to_string());
                 args.push("-ab".to_string());
                 args.push("320k".to_string());
-                
-                if enable_split {
-                    args.push("-f".to_string());
-                    args.push("segment".to_string());
-                    args.push("-segment_time".to_string());
-                    args.push(segment_time_str.clone());
-                    args.push("-reset_timestamps".to_string());
-                    args.push("1".to_string());
-                    args.push("-segment_format".to_string());
-                    args.push("ipod".to_string());
-                } else {
-                    args.push("-f".to_string());
-                    args.push("ipod".to_string());
-                }
+                args.push("-f".to_string());
+                args.push("segment".to_string());
+                args.push("-segment_time".to_string());
+                args.push("600".to_string());
+                args.push("-reset_timestamps".to_string());
+                args.push("1".to_string());
+                args.push("-segment_format".to_string());
+                args.push("ipod".to_string());
             }
-            "mp4" => {
+            _ => { // ts, mp4, flv, mkv, etc. Defaults to mpegts segments for lossless stream copy
                 args.push("-map".to_string());
                 args.push("0".to_string());
                 args.push("-c:v".to_string());
@@ -296,98 +255,18 @@ impl Recorder {
                 args.push("copy".to_string());
                 args.push("-bsf:a".to_string());
                 args.push("aac_adtstoasc".to_string());
-                
-                if enable_split {
-                    args.push("-f".to_string());
-                    args.push("segment".to_string());
-                    args.push("-segment_time".to_string());
-                    args.push(segment_time_str.clone());
-                    args.push("-reset_timestamps".to_string());
-                    args.push("1".to_string());
-                    args.push("-segment_format".to_string());
-                    args.push("mp4".to_string());
-                } else {
-                    args.push("-movflags".to_string());
-                    args.push("+faststart".to_string());
-                    args.push("-f".to_string());
-                    args.push("mp4".to_string());
-                }
-            }
-            "flv" => {
-                args.push("-map".to_string());
-                args.push("0".to_string());
-                args.push("-c:v".to_string());
-                args.push("copy".to_string());
-                args.push("-c:a".to_string());
-                args.push("copy".to_string());
-                args.push("-bsf:a".to_string());
-                args.push("aac_adtstoasc".to_string());
-                
-                if enable_split {
-                    args.push("-f".to_string());
-                    args.push("segment".to_string());
-                    args.push("-segment_time".to_string());
-                    args.push(segment_time_str.clone());
-                    args.push("-reset_timestamps".to_string());
-                    args.push("1".to_string());
-                    args.push("-segment_format".to_string());
-                    args.push("flv".to_string());
-                } else {
-                    args.push("-f".to_string());
-                    args.push("flv".to_string());
-                }
-            }
-            "mkv" => {
-                args.push("-map".to_string());
-                args.push("0".to_string());
-                args.push("-c:v".to_string());
-                args.push("copy".to_string());
-                args.push("-c:a".to_string());
-                args.push("copy".to_string());
-                args.push("-bsf:a".to_string());
-                args.push("aac_adtstoasc".to_string());
-                
-                if enable_split {
-                    args.push("-f".to_string());
-                    args.push("segment".to_string());
-                    args.push("-segment_time".to_string());
-                    args.push(segment_time_str.clone());
-                    args.push("-reset_timestamps".to_string());
-                    args.push("1".to_string());
-                    args.push("-segment_format".to_string());
-                    args.push("matroska".to_string());
-                } else {
-                    args.push("-f".to_string());
-                    args.push("matroska".to_string());
-                }
-            }
-            _ => { // ts
-                args.push("-map".to_string());
-                args.push("0".to_string());
-                args.push("-c:v".to_string());
-                args.push("copy".to_string());
-                args.push("-c:a".to_string());
-                args.push("copy".to_string());
-                args.push("-bsf:a".to_string());
-                args.push("aac_adtstoasc".to_string());
-                
-                if enable_split {
-                    args.push("-f".to_string());
-                    args.push("segment".to_string());
-                    args.push("-segment_time".to_string());
-                    args.push(segment_time_str.clone());
-                    args.push("-reset_timestamps".to_string());
-                    args.push("1".to_string());
-                    args.push("-segment_format".to_string());
-                    args.push("mpegts".to_string());
-                } else {
-                    args.push("-f".to_string());
-                    args.push("mpegts".to_string());
-                }
+                args.push("-f".to_string());
+                args.push("segment".to_string());
+                args.push("-segment_time".to_string());
+                args.push("600".to_string());
+                args.push("-reset_timestamps".to_string());
+                args.push("1".to_string());
+                args.push("-segment_format".to_string());
+                args.push("mpegts".to_string());
             }
         }
         
-        // Output file
+        // Output file pattern in downloading/[anchor]/
         let output_str = downloading_file_path.to_string_lossy().to_string();
         args.push(output_str);
 
@@ -414,6 +293,8 @@ impl Recorder {
             stop_tx: Some(stop_tx),
             output_file_path: downloading_file_path,
             target_dir_path: dir_path,
+            filename_base,
+            effective_ext,
         })
     }
 }
@@ -447,7 +328,7 @@ fn sanitize_filename(name: &str) -> String {
 }
 
 /// Retrieve the custom local FFmpeg path or fallback to system path
-fn get_ffmpeg_path() -> PathBuf {
+pub fn get_ffmpeg_path() -> PathBuf {
     // 1. Check in the same directory as the running executable
     if let Ok(current_exe) = std::env::current_exe() {
         if let Some(exe_dir) = current_exe.parent() {
